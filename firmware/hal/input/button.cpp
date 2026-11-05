@@ -1,20 +1,10 @@
-#include <stdio.h>
-#include <Arduino.h>
-#include "button.hpp"
+#include "hal/input/button.hpp"
 
-Button::Button()
-{
-    this->name = nullptr;
-    this->pin = 255;
-    this->pressed = false;
-};
+#include <cstdio>
 
-Button::Button(const char *name, uint8_t pin)
-{
-    this->name = name;
-    this->pin = pin;
-    this->pressed = false;
-}
+Button::Button() : name(nullptr), pin(255), pressed(false) {}
+
+Button::Button(const char* name, uint8_t pin) : name(name), pin(pin), pressed(false) {}
 
 bool Button::begin()
 {
@@ -29,27 +19,33 @@ bool Button::begin()
 
     pinMode(pin, INPUT_PULLUP);
 
-    this->setInstanciated(true);
+    setInstantiated(true);
     snprintf(buffer, sizeof(buffer), "Button: %s on pin %d initialized", name, pin);
     Serial.println(buffer);
     return true;
-};
+}
 
-const char * Button::getName() const { return name; };
+const char* Button::getName() const
+{
+    return name;
+}
 
-uint8_t Button::getPin() const { return pin; };
+uint8_t Button::getPin() const
+{
+    return pin;
+}
 
 void Button::update()
 {
-    if (!this->isInstanciated()) {
+    if (!isInstantiated()) {
         Serial.println("Button not initialized");
         return;
     }
 
-    this->pressed = digitalRead(pin) == LOW;
-};
+    pressed = digitalRead(pin) == LOW;
+}
 
 bool Button::isPressed() const
 {
-    return this->pressed;
-};
+    return pressed;
+}
