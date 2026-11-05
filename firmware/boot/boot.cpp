@@ -7,6 +7,7 @@ void Boot::initializeHardware() {
 }
 
 bool Boot::begin() {
+    Serial.begin(115200);
     initializeHardware();
 
     return true;

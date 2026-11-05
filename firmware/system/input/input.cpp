@@ -1,6 +1,9 @@
 #include "Arduino.h"
 #include "input.hpp"
 
+enum { PIN_A = 13, PIN_B = 14, PIN_X = 16, PIN_Y = 17,
+       PIN_UP = 18, PIN_DOWN = 19, PIN_LEFT = 21, PIN_RIGHT = 22 };
+
 Input::Input() : state{}, keys{}, buttonCount(0) {}
 
 const char* const* Input::getKeys() const
@@ -47,35 +50,35 @@ bool Input::begin()
 {
     Serial.println("Initializing Input module...");
 
-    if (!addKey("A", 2)) {
+    if (!addKey("A", PIN_A)) {
         Serial.println("Failed to add key A");
         return false;
     }
-    if (!addKey("B", 3)){
+    if (!addKey("B", PIN_B)){
         Serial.println("Failed to add key B");
         return false;
     }
-    if (!addKey("X", 4)){
+    if (!addKey("X", PIN_X)){
         Serial.println("Failed to add key X");
         return false;
     }
-    if (!addKey("Y", 5)){
+    if (!addKey("Y", PIN_Y)){
         Serial.println("Failed to add key Y");
         return false;
     }
-    if (!addKey("UP", 6)){
+    if (!addKey("UP", PIN_UP)){
         Serial.println("Failed to add key UP");
         return false;
     }
-    if (!addKey("DOWN", 7)){
+    if (!addKey("DOWN", PIN_DOWN)){
         Serial.println("Failed to add key DOWN");
         return false;
     }
-    if (!addKey("LEFT", 8)){
+    if (!addKey("LEFT", PIN_LEFT)){
         Serial.println("Failed to add key LEFT");
         return false;
     }
-    if (!addKey("RIGHT", 9)){
+    if (!addKey("RIGHT", PIN_RIGHT)){
         Serial.println("Failed to add key RIGHT");
         return false;
     }
