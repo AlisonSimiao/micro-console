@@ -16,9 +16,13 @@ public:
     const char* const* getKeys() const;
     uint8_t getKeyCount() const;
     bool isPressed(const char* key) const;
+    bool wasPressed(const char* key) const;
+    bool wasReleased(const char* key) const;
 
 private:
     static constexpr uint8_t MAX_BUTTONS = 8;
+
+    const Button* findButton(const char* key) const;
 
     Config& config;
     Button state[MAX_BUTTONS];

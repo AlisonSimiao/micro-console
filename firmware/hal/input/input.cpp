@@ -105,15 +105,33 @@ void Input::update()
 
 bool Input::isPressed(const char* key) const
 {
+    const Button* button = findButton(key);
+    return button != nullptr && button->isPressed();
+}
+
+bool Input::wasPressed(const char* key) const
+{
+    const Button* button = findButton(key);
+    return button != nullptr && button->wasPressed();
+}
+
+bool Input::wasReleased(const char* key) const
+{
+    const Button* button = findButton(key);
+    return button != nullptr && button->wasReleased();
+}
+
+const Button* Input::findButton(const char* key) const
+{
     if (key == nullptr) {
-        return false;
+        return nullptr;
     }
 
     for (uint8_t i = 0; i < buttonCount; ++i) {
         if (strcmp(state[i].getName(), key) == 0) {
-            return state[i].isPressed();
+            return &state[i];
         }
     }
 
-    return false;
+    return nullptr;
 }
