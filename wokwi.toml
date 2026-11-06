@@ -1,0 +1,5 @@
+[wokwi]
+version = 1
+# Imagem completa da flash (bootloader + partições + app + LittleFS), gravada no offset 0x0
+firmware = ".pio/build/esp32/merged.bin"
+elf = ".pio/build/esp32/firmware.elf"

@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "author": "Alison Simiao",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "board-esp32-devkit-c-v4", "id": "esp", "top": 182.4, "left": 4.84, "attrs": { "flashSize": "4" } },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btnUp",
+      "top": 10,
+      "left": -230,
+      "attrs": { "color": "black", "label": "UP" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btnLeft",
+      "top": 80,
+      "left": -310,
+      "attrs": { "color": "black", "label": "LEFT" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btnRight",
+      "top": 80,
+      "left": -150,
+      "attrs": { "color": "black", "label": "RIGHT" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btnDown",
+      "top": 150,
+      "left": -230,
+      "attrs": { "color": "black", "label": "DOWN" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btnX",
+      "top": 10,
+      "left": 290,
+      "attrs": { "color": "blue", "label": "X", "key": "i" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btnY",
+      "top": 80,
+      "left": 210,
+      "attrs": { "color": "green", "label": "Y", "key": "j" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btnA",
+      "top": 80,
+      "left": 370,
+      "attrs": { "color": "red", "label": "A", "key": "l" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btnB",
+      "top": 150,
+      "left": 290,
+      "attrs": { "color": "yellow", "label": "B", "key": "k" }
+    }
+  ],
+  "connections": [
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX", "$serialMonitor:TX", "", [] ],
+    [ "esp:13", "btnA:1.l", "red", [] ],
+    [ "esp:14", "btnB:1.l", "gold", [] ],
+    [ "esp:16", "btnX:1.l", "blue", [] ],
+    [ "esp:17", "btnY:1.l", "green", [] ],
+    [ "esp:18", "btnUp:1.r", "orange", [] ],
+    [ "esp:19", "btnDown:1.r", "orange", [] ],
+    [ "esp:21", "btnLeft:1.r", "orange", [] ],
+    [ "esp:22", "btnRight:1.r", "orange", [] ],
+    [ "btnA:2.l", "esp:GND.3", "black", [] ],
+    [ "btnB:2.l", "esp:GND.3", "black", [] ],
+    [ "btnX:2.l", "esp:GND.3", "black", [] ],
+    [ "btnY:2.l", "esp:GND.3", "black", [] ],
+    [ "btnUp:2.r", "esp:GND.1", "black", [] ],
+    [ "btnDown:2.r", "esp:GND.1", "black", [] ],
+    [ "btnLeft:2.r", "esp:GND.1", "black", [] ],
+    [ "btnRight:2.r", "esp:GND.1", "black", [] ]
+  ],
+  "dependencies": {}
+}
