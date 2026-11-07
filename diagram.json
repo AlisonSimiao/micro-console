@@ -5,6 +5,26 @@
   "parts": [
     { "type": "board-esp32-devkit-c-v4", "id": "esp", "top": 182.4, "left": 4.84, "attrs": { "flashSize": "4" } },
     {
+      "type": "wokwi-ili9341",
+      "id": "lcd",
+      "top": 480,
+      "left": 40
+    },
+    {
+      "type": "wokwi-led",
+      "id": "ledBacklight",
+      "top": 480,
+      "left": 560,
+      "attrs": { "color": "white", "label": "Backlight" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "rBacklight",
+      "top": 560,
+      "left": 460,
+      "attrs": { "value": "220" }
+    },
+    {
       "type": "wokwi-pushbutton",
       "id": "btnUp",
       "top": 10,
@@ -64,6 +84,15 @@
   "connections": [
     [ "esp:TX", "$serialMonitor:RX", "", [] ],
     [ "esp:RX", "$serialMonitor:TX", "", [] ],
+    [ "lcd:VCC", "esp:3V3", "red", [] ],
+    [ "lcd:GND", "esp:GND.2", "black", [] ],
+    [ "lcd:CS", "esp:27", "blue", [] ],
+    [ "lcd:D/C", "esp:32", "orange", [] ],
+    [ "lcd:MOSI", "esp:23", "green", [] ],
+    [ "lcd:SCK", "esp:4", "green", [] ],
+    [ "esp:33", "rBacklight:1", "purple", [] ],
+    [ "rBacklight:2", "ledBacklight:A", "purple", [] ],
+    [ "ledBacklight:C", "esp:GND.3", "black", [] ],
     [ "esp:13", "btnA:1.l", "red", [] ],
     [ "esp:14", "btnB:1.l", "gold", [] ],
     [ "esp:16", "btnX:1.l", "blue", [] ],
