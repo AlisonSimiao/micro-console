@@ -52,6 +52,20 @@ Warnings devem ser avaliados e, quando possível, corrigidos.
 
 O build atual leva aproximadamente 1 segundo.
 
+### Simulação (Wokwi)
+
+O simulador Wokwi carrega o arquivo definido em `wokwi.toml` e não usa `uploadfs`. Para que o LittleFS (`data/config.ini`) exista na simulação, o firmware e a imagem do filesystem são combinados em uma imagem completa da flash:
+
+```bash
+./build.sh
+```
+
+O script executa `pio run`, `pio run -t buildfs` e gera `.pio/build/esp32/merged.bin` com `esptool merge-bin` (LittleFS no offset `0x290000`, partição `spiffs` da tabela padrão).
+
+`merged.bin` não é atualizado automaticamente: rode `./build.sh` após alterar o firmware ou `data/` antes de iniciar o simulador.
+
+O circuito simulado fica em `diagram.json` (`board-esp32-devkit-c-v4`, flash de 4 MB, 8 botões ligados aos GPIOs abaixo e ao GND).
+
 ---
 
 ## Project Structure
@@ -532,11 +546,9 @@ HIGH → não pressionado
 
 A entrada deve utilizar níveis compatíveis com 3.3 V.
 
-### Future configuration
+### Configuration
 
-Os GPIOs atualmente são definidos no código, mas devem futuramente ser obtidos através de `Config`.
-
-Exemplo:
+Os GPIOs são lidos do `Config` (`data/config.ini`) pelas chaves abaixo. Os valores de `Current hardware` são os defaults no código, usados quando a chave não existe:
 
 ```text
 input.a
@@ -549,6 +561,20 @@ input.left
 input.right
 ```
 
+### Debounce e bordas
+
+`Button::update()` aplica debounce de 25 ms antes de mudar o estado.
+
+`Input` expõe:
+
+```text
+isPressed(key)    → botão mantido pressionado
+wasPressed(key)   → pressionado nesta atualização
+wasReleased(key)  → solto nesta atualização
+```
+
+`wasPressed()` e `wasReleased()` valem apenas até o próximo `Input::update()`. Leia-os no mesmo ciclo do loop, depois de `Input::update()`.
+
 ---
 
 # Main Loop and Updates
@@ -557,10 +583,11 @@ Atualmente:
 
 ```text
 setup()
- └── Boot::begin()
+ ├── Boot::addModule(input)
+ └── Boot::begin()   → em caso de falha, imprime o motivo e para (haltOnBootFailure)
 
 loop()
- └── vazio
+ └── Input::update()
 ```
 
 O sistema ainda não possui o loop de atualização completo.
@@ -638,26 +665,7 @@ Quando alterar esse estado:
 setX()
 ```
 
-O código atual possui inconsistências históricas relacionadas a:
-
-```text
-is_instanciated()
-set_instanciated()
-
-isInstanciated()
-setInstanciated()
-```
-
-Não faça uma alteração isolada nesses nomes durante uma feature não relacionada.
-
-Quando a API base for refatorada, padronizar intencionalmente para:
-
-```text
-isInstantiated()
-setInstantiated()
-```
-
-A grafia correta é `Instantiated`.
+O estado de inicialização dos HALs usa `isInstantiated()` / `setInstantiated()` (definidos em `hal_module`). A grafia correta é `Instantiated`; não reintroduza variantes como `instanciated`.
 
 ---
 
@@ -665,13 +673,8 @@ A grafia correta é `Instantiated`.
 
 Os itens abaixo descrevem o estado atual do projeto e não devem ser tratados automaticamente como decisões arquiteturais.
 
-- `Button::update()` atualmente não é chamado.
-- `Boot` atualmente não possui `update()`.
-- `loop()` está vazio.
-- `Input::isPressed()` atualmente aceita `char*` em vez de `const char*`.
-- A configuração dos GPIOs do Input ainda está hardcoded.
-- Existem inconsistências históricas nos nomes de `instantiated`.
-- Pode existir warning relacionado a `inputInitialized` em `firmware/boot/boot.cpp`.
+- `Boot` não possui `update()`; `loop()` chama `Input::update()` diretamente.
+- Ainda não existem Display, Audio, Storage, System nem Runtime.
 
 Problemas conhecidos devem ser corrigidos quando fizerem parte da área afetada pela mudança ou quando forem explicitamente tratados.
 
