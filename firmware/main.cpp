@@ -1,8 +1,10 @@
 #include "boot/boot.hpp"
 #include "config/config.hpp"
+#include "hal/display/display.hpp"
 #include "hal/input/input.hpp"
 
 Config config;
+Display display(config);
 Input input(config);
 Boot boot(config);
 
@@ -14,6 +16,11 @@ Boot boot(config);
 }
 
 void setup() {
+    if (!boot.addModule(display)) {
+        Serial.begin(115200);
+        haltOnBootFailure("Boot failed: could not register Display module");
+    }
+
     if (!boot.addModule(input)) {
         Serial.begin(115200);
         haltOnBootFailure("Boot failed: could not register Input module");
