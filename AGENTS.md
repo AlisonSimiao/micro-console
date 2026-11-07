@@ -747,3 +747,17 @@ Eles são gitignored e devem ser regenerados pelo PlatformIO em vez de editados 
 `.vscode/extensions.json` deliberadamente rejeita a extensão/pacote Microsoft C++ em favor do PlatformIO IDE.
 
 Não altere essas configurações sem uma necessidade concreta do projeto.
+
+## Agent skills
+
+### Issue tracker
+
+Issues e specs deste repo vivem no GitHub Issues, operados via `gh`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+As cinco roles canônicas usam os nomes default (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `GLOSSARY.md` e `docs/adr/` na raiz do repo. See `docs/agents/domain.md`.
