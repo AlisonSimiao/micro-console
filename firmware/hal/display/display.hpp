@@ -10,6 +10,7 @@ public:
     explicit Display(Config& config);
 
     bool begin() override;
+    bool claimPins(PinClaims& claims) const override;
 
     int width() const;
     int height() const;

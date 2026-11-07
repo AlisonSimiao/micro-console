@@ -111,10 +111,16 @@ bool isPinInUse(const PinDefinition& pin)
     return !pin.optional || pin.value != DISABLED_PIN;
 }
 
-bool validatePins(const Settings& settings)
+constexpr size_t PIN_COUNT = 7;
+
+struct PinDefinitions {
+    PinDefinition items[PIN_COUNT];
+};
+
+PinDefinitions describePins(const Settings& settings)
 {
     // configKey, value, optional, requiresOutput
-    const PinDefinition pins[] = {
+    return {{
         {"display.sck", settings.sck, false, true},
         {"display.mosi", settings.mosi, false, true},
         {"display.miso", settings.miso, true, false},
@@ -122,11 +128,15 @@ bool validatePins(const Settings& settings)
         {"display.dc", settings.dc, false, true},
         {"display.rst", settings.rst, true, true},
         {"display.led", settings.led, true, true},
-    };
-    constexpr size_t PIN_COUNT = sizeof(pins) / sizeof(pins[0]);
+    }};
+}
+
+bool validatePins(const Settings& settings)
+{
+    const PinDefinitions pins = describePins(settings);
 
     for (size_t i = 0; i < PIN_COUNT; ++i) {
-        const PinDefinition& pin = pins[i];
+        const PinDefinition& pin = pins.items[i];
         if (!isPinInUse(pin)) {
             continue;
         }
@@ -149,13 +159,13 @@ bool validatePins(const Settings& settings)
     }
 
     for (size_t i = 0; i < PIN_COUNT; ++i) {
-        const PinDefinition& first = pins[i];
+        const PinDefinition& first = pins.items[i];
         if (!isPinInUse(first)) {
             continue;
         }
 
         for (size_t j = i + 1; j < PIN_COUNT; ++j) {
-            const PinDefinition& second = pins[j];
+            const PinDefinition& second = pins.items[j];
             if (!isPinInUse(second)) {
                 continue;
             }
@@ -273,6 +283,24 @@ bool Display::begin()
     Serial.print(width());
     Serial.print("x");
     Serial.println(height());
+    return true;
+}
+
+bool Display::claimPins(PinClaims& claims) const
+{
+    const PinDefinitions pins = describePins(readSettings(config));
+
+    for (size_t i = 0; i < PIN_COUNT; ++i) {
+        const PinDefinition& pin = pins.items[i];
+        if (!isPinInUse(pin)) {
+            continue;
+        }
+
+        if (!claims.add(pin.value, pin.configKey)) {
+            return false;
+        }
+    }
+
     return true;
 }
 
