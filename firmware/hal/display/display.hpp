@@ -18,6 +18,9 @@ public:
     void drawText(int x, int y, const char* text, uint16_t color, uint8_t size);
     void setBrightness(uint8_t level);
 
+    uint8_t getRotation() const;
+    uint8_t getBrightness() const;
+
 private:
     Config& config;
     int backlightPin;

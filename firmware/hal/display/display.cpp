@@ -10,7 +10,6 @@ namespace {
 constexpr int PANEL_WIDTH = 240;
 constexpr int PANEL_HEIGHT = 320;
 constexpr uint32_t SPI_WRITE_FREQUENCY = 40000000;
-constexpr uint32_t SPI_READ_FREQUENCY = 16000000;
 constexpr uint8_t BACKLIGHT_CHANNEL = 0;
 constexpr uint32_t BACKLIGHT_FREQUENCY = 5000;
 constexpr uint8_t BACKLIGHT_RESOLUTION = 8;
@@ -50,10 +49,9 @@ public:
         busConfig.spi_host = SPI2_HOST;
         busConfig.spi_mode = 0;
         busConfig.freq_write = SPI_WRITE_FREQUENCY;
-        busConfig.freq_read = SPI_READ_FREQUENCY;
-        busConfig.spi_3wire = settings.miso == DISABLED_PIN;
+        // Painel 4-wire com DC dedicado; leitura não usada.
+        busConfig.spi_3wire = false;
         busConfig.use_lock = true;
-        busConfig.dma_channel = SPI_DMA_CH_AUTO;
         busConfig.pin_sclk = static_cast<int16_t>(settings.sck);
         busConfig.pin_mosi = static_cast<int16_t>(settings.mosi);
         busConfig.pin_miso = static_cast<int16_t>(settings.miso);
@@ -68,7 +66,7 @@ public:
         panelConfig.memory_height = PANEL_HEIGHT;
         panelConfig.panel_width = PANEL_WIDTH;
         panelConfig.panel_height = PANEL_HEIGHT;
-        panelConfig.readable = settings.miso != DISABLED_PIN;
+        panelConfig.readable = false;
         panel.config(panelConfig);
 
         return init();
@@ -80,7 +78,7 @@ private:
 };
 
 // Instância única: o objeto do painel vive somente neste arquivo.
-DisplayPanel panel;
+DisplayPanel displayPanel;
 
 Settings readSettings(const Config& config)
 {
@@ -104,6 +102,11 @@ bool isPinAllowed(int pin)
     return pin < RESERVED_PIN_MIN || pin > RESERVED_PIN_MAX;
 }
 
+bool isPinInUse(const PinDefinition& pin)
+{
+    return !pin.optional || pin.value != DISABLED_PIN;
+}
+
 bool validatePins(const Settings& settings)
 {
     const PinDefinition pins[] = {
@@ -119,7 +122,7 @@ bool validatePins(const Settings& settings)
 
     for (size_t i = 0; i < PIN_COUNT; ++i) {
         const PinDefinition& pin = pins[i];
-        if (pin.optional && pin.value == DISABLED_PIN) {
+        if (!isPinInUse(pin)) {
             continue;
         }
 
@@ -134,13 +137,13 @@ bool validatePins(const Settings& settings)
 
     for (size_t i = 0; i < PIN_COUNT; ++i) {
         const PinDefinition& first = pins[i];
-        if (first.optional && first.value == DISABLED_PIN) {
+        if (!isPinInUse(first)) {
             continue;
         }
 
         for (size_t j = i + 1; j < PIN_COUNT; ++j) {
             const PinDefinition& second = pins[j];
-            if (second.optional && second.value == DISABLED_PIN) {
+            if (!isPinInUse(second)) {
                 continue;
             }
 
@@ -233,23 +236,23 @@ bool Display::begin()
     Serial.print(", brightness=");
     Serial.println(brightness);
 
-    if (!panel.begin(settings)) {
+    if (!displayPanel.begin(settings)) {
         Serial.println("Display: panel initialization failed");
         return false;
     }
 
-    panel.setRotation(rotation);
+    displayPanel.setRotation(rotation);
 
     if (backlightPin == DISABLED_PIN) {
         Serial.println("Display: backlight control disabled, using fixed 3V3");
     } else {
-        const uint8_t ledPin = static_cast<uint8_t>(backlightPin);
-        if (!ledcAttachChannel(ledPin, BACKLIGHT_FREQUENCY, BACKLIGHT_RESOLUTION, BACKLIGHT_CHANNEL)) {
-            Serial.println("Display: failed to attach backlight PWM");
-            return false;
+        const uint8_t backlightGpio = static_cast<uint8_t>(backlightPin);
+        if (!ledcAttachChannel(backlightGpio, BACKLIGHT_FREQUENCY, BACKLIGHT_RESOLUTION, BACKLIGHT_CHANNEL)) {
+            Serial.println("Display: failed to attach backlight PWM; backlight left at fixed 3V3");
+            backlightPin = DISABLED_PIN;
+        } else {
+            ledcWrite(backlightGpio, brightness);
         }
-
-        ledcWrite(ledPin, brightness);
     }
 
     setInstantiated(true);
@@ -276,7 +279,7 @@ void Display::clear(uint16_t color)
         return;
     }
 
-    panel.fillScreen(color);
+    displayPanel.fillScreen(color);
 }
 
 void Display::fillRect(int x, int y, int w, int h, uint16_t color)
@@ -285,7 +288,7 @@ void Display::fillRect(int x, int y, int w, int h, uint16_t color)
         return;
     }
 
-    panel.fillRect(x, y, w, h, color);
+    displayPanel.fillRect(x, y, w, h, color);
 }
 
 void Display::drawText(int x, int y, const char* text, uint16_t color, uint8_t size)
@@ -294,10 +297,10 @@ void Display::drawText(int x, int y, const char* text, uint16_t color, uint8_t s
         return;
     }
 
-    panel.setTextDatum(lgfx::textdatum_t::top_left);
-    panel.setTextColor(color);
-    panel.setTextSize(size);
-    panel.drawString(text, x, y);
+    displayPanel.setTextDatum(lgfx::textdatum_t::top_left);
+    displayPanel.setTextColor(color);
+    displayPanel.setTextSize(size);
+    displayPanel.drawString(text, x, y);
 }
 
 void Display::setBrightness(uint8_t level)
@@ -309,4 +312,14 @@ void Display::setBrightness(uint8_t level)
     }
 
     ledcWrite(static_cast<uint8_t>(backlightPin), level);
+}
+
+uint8_t Display::getRotation() const
+{
+    return rotation;
+}
+
+uint8_t Display::getBrightness() const
+{
+    return brightness;
 }

@@ -639,6 +639,7 @@ clear(color)       → preenche o Display inteiro
 fillRect(x, y, w, h, color)
 drawText(x, y, text, color, size)
 setBrightness(level)
+getRotation() / getBrightness()
 ```
 
 As cores são RGB565 (`uint16_t`). `drawText` usa a fonte embutida, datum superior esquerdo e tamanho inteiro.
@@ -748,7 +749,7 @@ Os itens abaixo descrevem o estado atual do projeto e não devem ser tratados au
 
 - `Boot` não possui `update()`; `loop()` chama `Input::update()` diretamente.
 - Ainda não existem Audio, Storage, System nem Runtime.
-- O `main.cpp` ainda não desenha uma tela de teste no Display.
+- A tela de teste do Display em `main.cpp` é temporária.
 
 Problemas conhecidos devem ser corrigidos quando fizerem parte da área afetada pela mudança ou quando forem explicitamente tratados.
 

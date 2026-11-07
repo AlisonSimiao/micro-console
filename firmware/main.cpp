@@ -26,23 +26,11 @@ const uint16_t BAR_COLORS[] = {
 };
 constexpr int BAR_COUNT = sizeof(BAR_COLORS) / sizeof(BAR_COLORS[0]);
 
-int clampInt(int value, int minimum, int maximum)
-{
-    if (value < minimum) {
-        return minimum;
-    }
-
-    if (value > maximum) {
-        return maximum;
-    }
-
-    return value;
-}
-
-void drawTestScreen(Display& display, int rotation)
+void drawTestScreen(Display& display)
 {
     const int width = display.width();
     const int height = display.height();
+    const int rotation = display.getRotation();
 
     display.clear(COLOR_BACKGROUND);
 
@@ -99,10 +87,10 @@ void setup() {
         haltOnBootFailure("Boot failed; system halted");
     }
 
-    const int rotation = clampInt(config.getInt("display.rotation", 0), 0, 3);
-    const int brightness = clampInt(config.getInt("display.brightness", 255), 0, 255);
+    const int rotation = display.getRotation();
+    const int brightness = display.getBrightness();
 
-    drawTestScreen(display, rotation);
+    drawTestScreen(display);
 
     Serial.print("Display: test screen ILI9341 ");
     Serial.print(display.width());
