@@ -622,7 +622,7 @@ display.brightness
 
 Defaults usados quando a chave não existe: `sck=4`, `mosi=23`, `cs=27`, `dc=32`, `led=33`, `miso=-1`, `rst=-1`, `rotation=0`, `brightness=255`.
 
-`-1` significa "não usado": MISO desligado, RST desligado e LED desligado (Backlight fixo em 3V3). Pinos fora de 0–39, duplicados entre si ou em 6–11 fazem `begin()` retornar `false`.
+`-1` significa "não usado": MISO desligado, RST desligado e LED desligado (Backlight fixo em 3V3). São válidos os GPIOs 0–5, 12–19, 21–23, 25–27 e 32–39; GPIOs 6–11 são reservados para a flash. SCK, MOSI, CS, DC, RST e LED precisam de capacidade de saída; GPIOs 34–39 só podem ser usados como MISO. Pinos inválidos ou duplicados entre si fazem `begin()` retornar `false`.
 
 ### Geometria e rotação
 

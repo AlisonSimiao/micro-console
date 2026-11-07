@@ -14,9 +14,6 @@ constexpr uint8_t BACKLIGHT_CHANNEL = 0;
 constexpr uint32_t BACKLIGHT_FREQUENCY = 5000;
 constexpr uint8_t BACKLIGHT_RESOLUTION = 8;
 constexpr int DISABLED_PIN = -1;
-constexpr int MAX_GPIO_PIN = 39;
-constexpr int RESERVED_PIN_MIN = 6;
-constexpr int RESERVED_PIN_MAX = 11;
 
 struct Settings {
     int sck;
@@ -32,6 +29,7 @@ struct PinDefinition {
     const char* configKey;
     int value;
     bool optional;
+    bool requiresOutput;
 };
 
 class DisplayPanel : public lgfx::LGFX_Device {
@@ -93,13 +91,19 @@ Settings readSettings(const Config& config)
     return settings;
 }
 
-bool isPinAllowed(int pin)
+bool isValidGpioPin(int pin)
 {
-    if (pin < 0 || pin > MAX_GPIO_PIN) {
-        return false;
-    }
+    return (pin >= 0 && pin <= 5) ||
+           (pin >= 12 && pin <= 19) ||
+           (pin >= 21 && pin <= 23) ||
+           (pin >= 25 && pin <= 27) ||
+           (pin >= 32 && pin <= 39);
+}
 
-    return pin < RESERVED_PIN_MIN || pin > RESERVED_PIN_MAX;
+bool isOutputCapable(int pin)
+{
+    // GPIO 34–39 são somente entrada.
+    return isValidGpioPin(pin) && pin < 34;
 }
 
 bool isPinInUse(const PinDefinition& pin)
@@ -109,14 +113,15 @@ bool isPinInUse(const PinDefinition& pin)
 
 bool validatePins(const Settings& settings)
 {
+    // configKey, value, optional, requiresOutput
     const PinDefinition pins[] = {
-        {"display.sck", settings.sck, false},
-        {"display.mosi", settings.mosi, false},
-        {"display.miso", settings.miso, true},
-        {"display.cs", settings.cs, false},
-        {"display.dc", settings.dc, false},
-        {"display.rst", settings.rst, true},
-        {"display.led", settings.led, true},
+        {"display.sck", settings.sck, false, true},
+        {"display.mosi", settings.mosi, false, true},
+        {"display.miso", settings.miso, true, false},
+        {"display.cs", settings.cs, false, true},
+        {"display.dc", settings.dc, false, true},
+        {"display.rst", settings.rst, true, true},
+        {"display.led", settings.led, true, true},
     };
     constexpr size_t PIN_COUNT = sizeof(pins) / sizeof(pins[0]);
 
@@ -126,8 +131,16 @@ bool validatePins(const Settings& settings)
             continue;
         }
 
-        if (!isPinAllowed(pin.value)) {
+        if (!isValidGpioPin(pin.value)) {
             Serial.print("Display: invalid pin for ");
+            Serial.print(pin.configKey);
+            Serial.print(": ");
+            Serial.println(pin.value);
+            return false;
+        }
+
+        if (pin.requiresOutput && !isOutputCapable(pin.value)) {
+            Serial.print("Display: pin requires output capability for ");
             Serial.print(pin.configKey);
             Serial.print(": ");
             Serial.println(pin.value);
