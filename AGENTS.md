@@ -236,8 +236,14 @@ input.y
 audio.pin
 audio.volume
 
-display.width
-display.height
+display.sck
+display.mosi
+display.cs
+display.dc
+display.led
+display.miso
+display.rst
+display.rotation
 display.brightness
 ```
 
@@ -403,7 +409,7 @@ Config
   ↓
 Storage
   ↓
-Input / Display / Audio
+Display / Input / Audio
   ↓
 System
   ↓
@@ -577,12 +583,79 @@ wasReleased(key)  → solto nesta atualização
 
 ---
 
+# Display
+
+O console usa um Painel ILI9341 240x320 ligado por SPI, em modo imediato: cada chamada de desenho escreve direto no Painel, sem framebuffer nem `flush()`.
+
+A biblioteca LovyanGFX fica confinada a `firmware/hal/display/display.cpp`. O `display.hpp` não inclui nem menciona tipos da biblioteca.
+
+### Current hardware
+
+```text
+SCK   → GPIO 4
+MOSI  → GPIO 23
+CS    → GPIO 27
+DC    → GPIO 32
+LED   → GPIO 33 (Backlight)
+
+MISO  → não usado (-1)
+RST   → não usado (-1)
+```
+
+O SPI roda a 40 MHz. O barramento nativo do ESP32 não é usado porque GPIO 18 e 19 já pertencem ao Input. GPIO 25 e 26 permanecem reservados para o áudio.
+
+### Configuration
+
+Os pinos, a rotação e o Brilho vêm do `Config` (`data/config.ini`):
+
+```text
+display.sck
+display.mosi
+display.cs
+display.dc
+display.led
+display.miso
+display.rst
+display.rotation
+display.brightness
+```
+
+Defaults usados quando a chave não existe: `sck=4`, `mosi=23`, `cs=27`, `dc=32`, `led=33`, `miso=-1`, `rst=-1`, `rotation=0`, `brightness=255`.
+
+`-1` significa "não usado": MISO desligado, RST desligado e LED desligado (Backlight fixo em 3V3). Pinos fora de 0–39, duplicados entre si ou em 6–11 fazem `begin()` retornar `false`.
+
+### Geometria e rotação
+
+`display.rotation` aceita 0–3; valores fora da faixa são limitados com aviso no Serial. `width()` e `height()` retornam 240x320 em rotação par e 320x240 em rotação ímpar.
+
+### Desenho
+
+A API pública é:
+
+```text
+begin()            → valida a configuração e inicializa o Painel
+width() / height() → geometria atual, considerando a rotação
+clear(color)       → preenche o Display inteiro
+fillRect(x, y, w, h, color)
+drawText(x, y, text, color, size)
+setBrightness(level)
+```
+
+As cores são RGB565 (`uint16_t`). `drawText` usa a fonte embutida, datum superior esquerdo e tamanho inteiro.
+
+### Brilho
+
+`setBrightness()` controla o Backlight por PWM direto no pino `display.led` (LEDC, canal 0, 8 bits, 5 kHz). `0` apaga o Backlight e `255` usa intensidade máxima. O Brilho inicial vem de `display.brightness`; alterações em runtime não são persistidas no `Config`. O controle de Backlight da LovyanGFX não é usado.
+
+---
+
 # Main Loop and Updates
 
 Atualmente:
 
 ```text
 setup()
+ ├── Boot::addModule(display)
  ├── Boot::addModule(input)
  └── Boot::begin()   → em caso de falha, imprime o motivo e para (haltOnBootFailure)
 
@@ -674,7 +747,8 @@ O estado de inicialização dos HALs usa `isInstantiated()` / `setInstantiated()
 Os itens abaixo descrevem o estado atual do projeto e não devem ser tratados automaticamente como decisões arquiteturais.
 
 - `Boot` não possui `update()`; `loop()` chama `Input::update()` diretamente.
-- Ainda não existem Display, Audio, Storage, System nem Runtime.
+- Ainda não existem Audio, Storage, System nem Runtime.
+- O `main.cpp` ainda não desenha uma tela de teste no Display.
 
 Problemas conhecidos devem ser corrigidos quando fizerem parte da área afetada pela mudança ou quando forem explicitamente tratados.
 
