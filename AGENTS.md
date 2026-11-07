@@ -283,8 +283,11 @@ Representa um módulo que precisa ser inicializado.
 Responsabilidade:
 
 ```text
+claimPins(claims)   → opcional; declara os GPIOs do módulo
 begin()
 ```
+
+`claimPins()` tem implementação padrão vazia (módulo sem pinos). Um HAL que usa GPIOs a sobrescreve, lendo apenas o próprio namespace do `Config` e declarando cada pino com a chave de configuração correspondente (`claims.add(pin, "display.cs")`). Pinos desligados (`-1`) não são declarados. `claimPins()` não toca no hardware.
 
 ### `hal_updatable`
 
@@ -399,6 +402,16 @@ Boot
 O `Boot` deve apenas coordenar a inicialização.
 
 A lógica de hardware continua pertencendo ao próprio HAL.
+
+### Conflitos de GPIO
+
+Antes de inicializar qualquer HAL, `Boot::begin()` chama `claimPins()` em todos os módulos registrados e acumula as declarações em um `PinClaims` (`hal/core/pin_claims.hpp`, capacidade fixa de 32). Se dois módulos declararem o mesmo GPIO, o boot falha antes de qualquer `begin()` e o Serial cita as duas chaves:
+
+```text
+Boot: pin conflict on GPIO 18 between display.cs and input.up
+```
+
+O `Boot` não conhece as chaves de pino de nenhum módulo; cada HAL declara os seus. A validação específica de cada módulo (GPIO existente, capacidade de saída, faixa) continua no `begin()` do HAL. Ver `docs/adr/0003-declaracao-de-pinos-em-duas-fases.md`.
 
 A ordem de inicialização deve ser explícita quando existir dependência entre módulos.
 
@@ -658,7 +671,8 @@ Atualmente:
 setup()
  ├── Boot::addModule(display)
  ├── Boot::addModule(input)
- └── Boot::begin()   → em caso de falha, imprime o motivo e para (haltOnBootFailure)
+ └── Boot::begin()   → Config, claimPins() de todos os módulos, begin() de cada um;
+                       em caso de falha, imprime o motivo e para (haltOnBootFailure)
 
 loop()
  └── Input::update()

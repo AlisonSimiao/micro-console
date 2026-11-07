@@ -15,6 +15,18 @@ bool Boot::addModule(hal_module& module)
     return true;
 }
 
+bool Boot::claimPins()
+{
+    PinClaims claims;
+    for (uint8_t i = 0; i < moduleCount; ++i) {
+        if (!modules[i]->claimPins(claims)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 bool Boot::initializeHardware()
 {
     for (uint8_t i = 0; i < moduleCount; ++i) {
@@ -35,6 +47,11 @@ bool Boot::begin()
 
     if (!config.begin()) {
         Serial.println("Boot: config initialization failed");
+        return false;
+    }
+
+    if (!claimPins()) {
+        Serial.println("Boot: pin validation failed");
         return false;
     }
 

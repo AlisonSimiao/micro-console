@@ -18,5 +18,6 @@ private:
     hal_module* modules[MAX_MODULES];
     uint8_t moduleCount;
 
+    bool claimPins();
     bool initializeHardware();
 };

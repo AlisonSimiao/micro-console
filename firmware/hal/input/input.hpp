@@ -10,6 +10,7 @@ public:
     explicit Input(Config& config);
 
     bool begin() override;
+    bool claimPins(PinClaims& claims) const override;
     void update() override;
 
     bool addKey(const char* key, int pin);

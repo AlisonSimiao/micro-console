@@ -96,6 +96,18 @@ bool Input::begin()
     return true;
 }
 
+bool Input::claimPins(PinClaims& claims) const
+{
+    for (uint8_t i = 0; i < KEY_COUNT; ++i) {
+        const int pin = config.getInt(KEY_DEFINITIONS[i].configKey, KEY_DEFINITIONS[i].defaultPin);
+        if (!claims.add(pin, KEY_DEFINITIONS[i].configKey)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 void Input::update()
 {
     for (uint8_t i = 0; i < buttonCount; ++i) {
