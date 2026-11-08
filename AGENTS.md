@@ -84,6 +84,10 @@ Estrutura atual/futura:
 firmware/
 ├── main.cpp
 │
+├── console/
+│   ├── console.hpp
+│   └── console.cpp
+│
 ├── boot/
 │   ├── boot.hpp
 │   └── boot.cpp
@@ -139,33 +143,83 @@ O firmware segue uma arquitetura em camadas, com responsabilidades bem definidas
 Fluxo conceitual:
 
 ```text
-                    ┌──────────────┐
-                    │     Boot     │
-                    └──────┬───────┘
-                           │
-                    ┌──────▼───────┐
-                    │    Config    │
-                    └──────┬───────┘
-                           │
-          ┌────────────────┼────────────────┐
-          │                │                │
-          ▼                ▼                ▼
-       Input            Display           Audio
-          │                │                │
-          └────────────────┼────────────────┘
-                           ▼
-                        System
-                           │
-                           ▼
-                       Runtime
-                           │
-                           ▼
-                        Game JS
+                        ┌──────────────┐
+                        │    Console   │
+                        └──────┬───────┘
+                               │
+                        ┌──────▼───────┐
+                        │     Boot     │
+                        └──────┬───────┘
+                               │
+                        ┌──────▼───────┐
+                        │    Config    │
+                        └──────┬───────┘
+                               │
+              ┌────────────────┼────────────────┐
+              │                │                │
+              ▼                ▼                ▼
+           Input            Display           Audio
+              │                │                │
+              └────────────────┼────────────────┘
+                               ▼
+                            System
+                               │
+                               ▼
+                           Runtime
+                               │
+                               ▼
+                            Game JS
 ```
 
 A direção das dependências deve permanecer previsível.
 
 ### Responsabilidades
+
+#### Console
+
+É o **Composition Root** do firmware. Instancia e conecta os componentes do console, mas não implementa lógica específica de hardware.
+
+Pode:
+
+- possuir `Config`, `Boot` e os HALs do console;
+- registrar os HALs no `Boot`;
+- iniciar o ciclo de vida do console;
+- orquestrar o `update()` dos componentes atualizáveis;
+- expor acesso interno aos módulos (`input()`, `display()`);
+- manter telas e diagnósticos temporários de desenvolvimento.
+
+Não deve:
+
+- implementar lógica de GPIO, SPI ou áudio;
+- substituir o `Boot` na inicialização dos HALs;
+- interpretar JavaScript;
+- executar gameplay;
+- virar uma máquina de estados de boot prematuramente.
+
+Os módulos são membros por valor e declarados na ordem de dependência (`Config` → HALs → `Boot`), pois os HALs guardam uma referência ao `Config`.
+
+```cpp
+class Console {
+public:
+    Console();
+
+    bool begin();
+    void update();
+
+    Input& input();
+    Display& display();
+
+private:
+    void drawTestScreen();
+
+    Config config_;
+    Input input_;
+    Display display_;
+    Boot boot_;
+};
+```
+
+As APIs `input()` e `display()` são **internas do firmware**. A futura API JavaScript (`Console.input.isPressed("A")`) é uma camada posterior da SDK e não deve ser confundida com elas.
 
 #### Boot
 
@@ -668,15 +722,22 @@ As cores são RGB565 (`uint16_t`). `drawText` usa a fonte embutida, datum superi
 Atualmente:
 
 ```text
+main.cpp
+ └── Console console
+
 setup()
- ├── Boot::addModule(display)
- ├── Boot::addModule(input)
- └── Boot::begin()   → Config, claimPins() de todos os módulos, begin() de cada um;
-                       em caso de falha, imprime o motivo e para (haltOnBootFailure)
+ └── Console::begin()
+      ├── Boot::addModule(display)
+      ├── Boot::addModule(input)
+      ├── Boot::begin()   → Config, claimPins() de todos os módulos, begin() de cada um
+      └── drawTestScreen() + diagnóstico no Serial
 
 loop()
- └── Input::update()
+ └── Console::update()
+      └── Input::update()
 ```
+
+Em caso de falha, `Console::begin()` retorna `false` e o `main.cpp` interrompe a execução. O `Console` apenas propaga o erro; o `Boot` é quem imprime o motivo.
 
 O sistema ainda não possui o loop de atualização completo.
 
@@ -684,11 +745,14 @@ A direção planejada para o MVP é um loop cooperativo:
 
 ```text
 loop()
- ├── Input::update()
- ├── Audio::update()
- ├── System::update()
- └── Runtime::update()
+ └── Console::update()
+      ├── Input::update()
+      ├── Audio::update()
+      ├── System::update()
+      └── Runtime::update()
 ```
+
+Não introduza um `UpdateManager` enquanto existir apenas um componente atualizável.
 
 Não utilizar tarefas FreeRTOS para cada módulo simplesmente para paralelizar componentes.
 
@@ -761,9 +825,9 @@ O estado de inicialização dos HALs usa `isInstantiated()` / `setInstantiated()
 
 Os itens abaixo descrevem o estado atual do projeto e não devem ser tratados automaticamente como decisões arquiteturais.
 
-- `Boot` não possui `update()`; `loop()` chama `Input::update()` diretamente.
+- `Boot` não possui `update()`; `Console::update()` chama `Input::update()` diretamente.
 - Ainda não existem Audio, Storage, System nem Runtime.
-- A tela de teste do Display em `main.cpp` é temporária.
+- A tela de teste (`drawTestScreen()`) em `console.cpp` é temporária e deve sair quando o System/UI existir.
 
 Problemas conhecidos devem ser corrigidos quando fizerem parte da área afetada pela mudança ou quando forem explicitamente tratados.
 
@@ -775,7 +839,7 @@ Não introduza `-fpermissive` ou outros mecanismos apenas para mascarar problema
 
 Ao alterar o firmware:
 
-1. Preserve a separação entre Boot, Config, HAL, System e Runtime.
+1. Preserve a separação entre Console, Boot, Config, HAL, System e Runtime.
 2. Não coloque lógica de hardware dentro de `Boot`.
 3. Não coloque lógica de sistema dentro de HALs.
 4. Não exponha detalhes físicos do hardware para jogos.
@@ -805,15 +869,17 @@ A evolução planejada do firmware é:
       ↓
 5. Display
       ↓
-6. Audio
+6. Console (Composition Root)
       ↓
-7. Storage
+7. Audio
       ↓
-8. System
+8. Storage
       ↓
-9. Game Runtime
+9. System
       ↓
-10. JavaScript games
+10. Game Runtime
+      ↓
+11. JavaScript games
 ```
 
 A implementação deve evoluir incrementalmente.
