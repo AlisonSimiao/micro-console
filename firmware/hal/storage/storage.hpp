@@ -5,8 +5,7 @@
 
 #include "config/config.hpp"
 #include "hal/core/hal_module.hpp"
-
-class StorageBackend;
+#include "hal/storage/storage_backend.hpp"
 
 struct StorageFileInfo {
     bool isDirectory;
@@ -54,5 +53,7 @@ public:
 
 private:
     Config& config;
-    StorageBackend& backend;
+    // A API pública consulta o Storage em métodos const, mas `open()` aloca um
+    // slot no backend. `mutable` preserva a assinatura const da API.
+    mutable StorageBackend backend;
 };

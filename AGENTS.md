@@ -405,7 +405,7 @@ Não adicione `update()` ao contrato base apenas para manter uma interface unifo
 
 ### Storage
 
-`Storage` monta o cartão microSD via SPI e oferece consulta de diretórios/arquivos, informações de arquivo e leitura em blocos. `StorageFile` é não copiável, movível e fecha o arquivo ao ser destruído. O backend usa a biblioteca `SD` do Arduino-ESP32; seus tipos não aparecem em `storage.hpp`.
+`Storage` monta o cartão microSD via SPI e oferece consulta de diretórios/arquivos, informações de arquivo e leitura em blocos. `StorageFile` é não copiável, movível e fecha o arquivo ao ser destruído. Cada `Storage` possui seu próprio `StorageBackend`; não existe backend global nem acesso público ao backend. A implementação atual usa a biblioteca `SD` do Arduino-ESP32 sobre um barramento VSPI dedicado; esses detalhes não fazem parte da API pública do `Storage`.
 
 API pública:
 
@@ -429,7 +429,7 @@ StorageFileInfo:
   size
 ```
 
-Os caminhos podem ser relativos à raiz do cartão ou começar com `/`; caminhos nulos, vazios ou com segmento `..` são recusados. `open()` abre apenas arquivos, não diretórios. Leitura de arquivo fechado retorna zero. A API não oferece escrita nesta etapa.
+Os caminhos podem ser relativos à raiz do cartão ou começar com `/`; caminhos nulos, vazios ou com segmento `..` são recusados. `open()` abre apenas arquivos, não diretórios. Leitura de arquivo fechado retorna zero. A API não oferece escrita nesta etapa. `StorageFile` referencia o backend do `Storage` que o abriu e não deve sobreviver a ele.
 
 O Storage é opcional no `Boot`: falha de montagem ou de declaração de pinos deixa `isMounted()` falso, mas não impede a inicialização dos módulos obrigatórios. O `Console` o registra depois de Display e Input e disponibiliza `storage()`. Todos os quatro sinais SPI são obrigatórios; Storage não suporta pino `-1`. A montagem SD é síncrona no boot e pode atrasar a exibição do menu quando o cartão está ausente. As decisões sobre módulos opcionais, prioridade de pinos e SPI dedicado estão em [ADR-0004](./docs/adr/0004-modulos-opcionais-e-storage-spi.md).
 
@@ -901,7 +901,8 @@ Os itens abaixo descrevem o estado atual do projeto e não devem ser tratados au
 
 - `Boot` não possui `update()`; `Console::update()` chama `Input::update()` e `HomeScreen::update()` diretamente.
 - Ainda não existem Audio, System nem Runtime.
-- A leitura do Storage ainda precisa de validação com cartão microSD físico; o circuito Wokwi atual não simula esse periférico.
+- O Storage está implementado, mas a leitura ainda precisa de validação com cartão microSD físico. A ausência do cartão no Wokwi limita a validação local e não indica falha do Storage.
+- A pinagem padrão do Storage é provisória: usa GPIOs de strapping (2, 5 e 15) e deve ser validada na placa.
 - O menu principal possui três opções selecionáveis, mas nenhuma delas executa ação.
 
 Problemas conhecidos devem ser corrigidos quando fizerem parte da área afetada pela mudança ou quando forem explicitamente tratados.
@@ -948,15 +949,19 @@ A evolução planejada do firmware é:
       ↓
 7. HomeScreen (menu principal)
       ↓
-8. Audio
+8. Storage ✅ (implementado; validação física pendente)
       ↓
-9. Storage (implementado; validação física pendente)
+9. Game Package ⏳ (próximo passo)
       ↓
-10. System
+10. Audio ⏳
       ↓
-11. Game Runtime
+11. Game Library ⏳
       ↓
-12. JavaScript games
+12. System ⏳
+      ↓
+13. Game Runtime ⏳
+      ↓
+14. JavaScript games ⏳
 ```
 
 A implementação deve evoluir incrementalmente.

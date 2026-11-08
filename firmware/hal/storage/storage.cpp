@@ -145,12 +145,6 @@ bool normalizePath(const char* path, char (&normalized)[MAX_PATH_LENGTH])
     return true;
 }
 
-StorageBackend& defaultBackend()
-{
-    static StorageBackend instance;
-    return instance;
-}
-
 } // namespace
 
 StorageFile::StorageFile() : backend(nullptr), slot(0) {}
@@ -217,7 +211,7 @@ void StorageFile::close()
     }
 }
 
-Storage::Storage(Config& config) : config(config), backend(defaultBackend()) {}
+Storage::Storage(Config& config) : config(config), backend() {}
 
 bool Storage::begin()
 {

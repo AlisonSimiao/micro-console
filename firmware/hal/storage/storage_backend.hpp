@@ -11,6 +11,9 @@ public:
 
     StorageBackend();
 
+    StorageBackend(const StorageBackend&) = delete;
+    StorageBackend& operator=(const StorageBackend&) = delete;
+
     bool begin(int sck, int miso, int mosi, int cs, uint32_t frequency);
     bool isMounted() const;
     bool exists(const char* path) const;
