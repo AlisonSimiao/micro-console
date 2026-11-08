@@ -52,7 +52,14 @@ Warnings devem ser avaliados e, quando possível, corrigidos.
 
 O build atual leva aproximadamente 1 segundo.
 
-Não há testes automatizados de hardware. Para o Storage, a compilação não substitui a validação física: com uma placa ESP32 e cartão FAT, verifique cartão ausente, montagem, pinos inválidos, `exists`, `isDirectory`, `getInfo`, abertura, leitura em blocos, fechamento e leitura depois de fechar (deve retornar zero). O circuito Wokwi atual não simula microSD; sem cartão, confirme no monitor serial que o Storage falha como opcional e que Display/Input seguem ativos.
+Há testes nativos para validação do cabeçalho, índice, caminhos e manifesto do Game Package:
+
+```bash
+bash test/run-game-package-tests.sh
+python3 test/make_game_package_fixtures.py /path/to/fixture-output
+```
+
+Execute `pio run` antes para instalar as dependências. Esses testes não substituem a validação física: com uma placa ESP32 e cartão FAT, verifique cartão ausente, montagem, pacotes válidos/inválidos e leitura em blocos de um arquivo interno maior que o buffer. O circuito Wokwi atual não simula microSD; sem cartão, confirme no monitor serial que o Storage falha como opcional e que Display/Input seguem ativos.
 
 ### Simulação (Wokwi)
 
@@ -102,6 +109,17 @@ firmware/
 ├── config/
 │   ├── config.hpp
 │   └── config.cpp
+│
+├── game/
+│   └── package/
+│       ├── game_package.hpp
+│       ├── game_package.cpp
+│       ├── game_manifest.hpp
+│       ├── game_manifest.cpp
+│       ├── package_reader.hpp
+│       ├── package_reader.cpp
+│       ├── package_format.hpp
+│       └── package_format.cpp
 │
 ├── hal/
 │   ├── core/
@@ -554,6 +572,14 @@ Não introduza dependências implícitas entre HALs sem necessidade.
 
 ---
 
+# Game Package
+
+`game/package/` abre pacotes `.ali` usando somente a API pública do Storage. O container V1 é binário sequencial, sem compressão, com índice no início e manifesto JSON (`manifest.json`) limitado a 4096 bytes. O índice aceita até 64 entradas, com caminhos de até 127 bytes.
+
+`GamePackage::open()` valida o cabeçalho, o índice, o manifesto e as referências ao entrypoint e à capa. `exists()` consulta o índice; `openFile()` retorna um `PackageFile` que limita as leituras ao conteúdo da entrada e fecha o arquivo SD ao ser destruído. A abertura de uma entrada pode descartar bytes sequencialmente até seu offset, pois `StorageFile` não possui `seek`. O pacote não é executado nem carregado integralmente na RAM. Consulte [a especificação `.ali`](./docs/game-package-format.md) e a [ADR-0005](./docs/adr/0005-formato-do-game-package.md).
+
+---
+
 # System
 
 `system/` contém funcionalidades de nível superior ao hardware.
@@ -595,6 +621,8 @@ Evite colocar lógica de negócio do sistema dentro dos HALs.
 # Runtime
 
 `runtime/` será responsável pela execução dos jogos.
+
+O Game Package apenas valida e fornece arquivos. Carregar ou executar o entrypoint pertence ao Runtime futuro.
 
 A fronteira planejada é:
 
@@ -900,7 +928,8 @@ O estado de inicialização dos HALs usa `isInstantiated()` / `setInstantiated()
 Os itens abaixo descrevem o estado atual do projeto e não devem ser tratados automaticamente como decisões arquiteturais.
 
 - `Boot` não possui `update()`; `Console::update()` chama `Input::update()` e `HomeScreen::update()` diretamente.
-- Ainda não existem Audio, System nem Runtime.
+- Ainda não existem Audio, Game Library, System nem Runtime.
+- O Game Package possui testes nativos para o formato, mas a integração de leitura deve ser validada com cartão microSD físico.
 - O Storage está implementado, mas a leitura ainda precisa de validação com cartão microSD físico. A ausência do cartão no Wokwi limita a validação local e não indica falha do Storage.
 - A pinagem padrão do Storage é provisória: usa GPIOs de strapping (2, 5 e 15) e deve ser validada na placa.
 - O menu principal possui três opções selecionáveis, mas nenhuma delas executa ação.
@@ -915,7 +944,7 @@ Não introduza `-fpermissive` ou outros mecanismos apenas para mascarar problema
 
 Ao alterar o firmware:
 
-1. Preserve a separação entre Console, Boot, Config, UI, HAL, System e Runtime.
+1. Preserve a separação entre Console, Boot, Config, UI, HAL, Game Package, System e Runtime.
 2. Não coloque lógica de hardware dentro de `Boot`.
 3. Não coloque lógica de sistema dentro de HALs.
 4. Não exponha detalhes físicos do hardware para jogos.
@@ -951,7 +980,7 @@ A evolução planejada do firmware é:
       ↓
 8. Storage ✅ (implementado; validação física pendente)
       ↓
-9. Game Package ⏳ (próximo passo)
+9. Game Package ✅ (formato V1 e leitor implementados; validação física pendente)
       ↓
 10. Audio ⏳
       ↓

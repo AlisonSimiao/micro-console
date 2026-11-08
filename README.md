@@ -1,6 +1,6 @@
 # Micro Console
 
-Firmware para um console baseado em ESP32 DevKit (`esp32dev`), desenvolvido com PlatformIO e Arduino. O projeto está em desenvolvimento: atualmente inclui inicialização do console, configuração via LittleFS, HALs de input, display e Storage e o menu principal navegável.
+Firmware para um console baseado em ESP32 DevKit (`esp32dev`), desenvolvido com PlatformIO e Arduino. O projeto está em desenvolvimento: atualmente inclui inicialização do console, configuração via LittleFS, HALs de input, display e Storage, leitor de pacotes de jogos e o menu principal navegável.
 
 ## Recursos atuais
 
@@ -9,10 +9,12 @@ Firmware para um console baseado em ESP32 DevKit (`esp32dev`), desenvolvido com 
 - Oito botões com `INPUT_PULLUP`, debounce de 25 ms e consulta de estado e bordas.
 - Painel ILI9341 240x320 via SPI, com rotação, desenho imediato e brilho por PWM.
 - Storage HAL para microSD por SPI, com consultas e leitura de arquivos em blocos; sua falha não bloqueia o console.
+- Game Package para validar pacotes `.ali`, ler o manifesto e abrir arquivos internos incrementalmente.
 - Menu principal com as opções Jogos, Configuracoes e Sobre, com seleção circular por UP/DOWN.
 - Simulação do circuito no Wokwi.
 
-Áudio, armazenamento de jogos, sistema e runtime JavaScript ainda não estão implementados.
+Game Library, áudio, sistema e runtime JavaScript ainda não estão implementados.
+O formato `.ali` V1 está descrito em [`docs/game-package-format.md`](./docs/game-package-format.md), e sua decisão arquitetural em [`ADR-0005`](./docs/adr/0005-formato-do-game-package.md).
 
 ## Hardware padrão
 
@@ -113,6 +115,26 @@ if (console.storage().isMounted()) {
 
 `StorageFile` fecha automaticamente ao sair de escopo e também pode ser fechado explicitamente; leituras em um arquivo fechado retornam zero. `StorageFileInfo` contém apenas `isDirectory` e `size`. As consultas `wasPressed()` e `wasReleased()` representam bordas detectadas na atualização corrente; consulte-as após a atualização de input. O console inicia no menu principal: UP e DOWN alternam a opção selecionada de forma circular, e os demais botões ainda não executam ações.
 
+O `GamePackage` recebe uma referência ao Storage; ele ainda não é um membro do `Console` nem é usado pelo menu:
+
+```cpp
+#include "game/package/game_package.hpp"
+
+if (console.storage().isMounted()) {
+    GamePackage game(console.storage());
+    if (game.open("/games/example.ali")) {
+        const GameManifest& manifest = game.manifest();
+        PackageFile entrypoint;
+        if (game.openFile(manifest.entrypoint, entrypoint)) {
+            uint8_t buffer[64];
+            const size_t count = entrypoint.read(buffer, sizeof(buffer));
+        }
+    }
+}
+```
+
+Use `PackageFile` enquanto consumir o conteúdo; a leitura é limitada ao tamanho declarado no índice e pode ser feita em blocos. O manifesto e o entrypoint são dados, não são executados. O formato, limites e campos do manifesto estão na [especificação `.ali`](./docs/game-package-format.md).
+
 ## Estrutura
 
 ```text
@@ -120,6 +142,8 @@ firmware/
 ├── main.cpp
 ├── boot/       # Orquestra a inicialização
 ├── config/     # Configuração em memória carregada do LittleFS
+├── game/
+│   └── package/ # Container .ali, manifesto e arquivos internos
 ├── console/    # Composição do console
 ├── ui/
 │   └── screens/ # Telas da interface (menu principal)
@@ -131,16 +155,19 @@ firmware/
 data/
 └── config.ini
 docs/adr/       # Decisões de arquitetura
+docs/game-package-format.md
 ```
 
 Os includes do firmware são relativos a `firmware/`, por exemplo `#include "hal/input/input.hpp"`.
 
 ## Verificação
 
-Não há testes automatizados ou CI configurados atualmente. A verificação de compilação é:
+Não há CI configurada. O build do firmware e os testes nativos do formato são:
 
 ```bash
 ~/.platformio/penv/bin/pio run
+bash test/run-game-package-tests.sh
+python3 test/make_game_package_fixtures.py /path/to/fixture-output
 ```
 
-Para validar o cartão, use uma placa ESP32 e cartão FAT funcional com a pinagem definida em `data/config.ini`. Verifique cartão ausente e montagem; com cartão montado, teste `exists`, `isDirectory`, `getInfo`, abertura, leitura em blocos e leitura após `close()` (deve retornar zero). O Wokwi deste projeto não cobre esses testes físicos; sem cartão, a inicialização opcional do Storage deve falhar sem impedir o restante do console.
+Os testes nativos validam o cabeçalho, os registros do índice, os caminhos e o manifesto. O gerador cria pacotes válidos e casos malformados para copiar ao cartão; eles não simulam a integração com o Storage. Para validar o cartão, use uma placa ESP32 e cartão FAT funcional com a pinagem definida em `data/config.ini`. Teste cartão ausente, pacotes gerados, arquivo interno inexistente e leitura incremental do `Assets/large.bin` (16 KiB, maior que o buffer de exemplo). O Wokwi deste projeto não cobre esses testes físicos; sem cartão, a inicialização opcional do Storage deve falhar sem impedir o restante do console.
