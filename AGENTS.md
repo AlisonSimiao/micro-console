@@ -88,6 +88,11 @@ firmware/
 │   ├── console.hpp
 │   └── console.cpp
 │
+├── ui/
+│   └── screens/
+│       ├── home_screen.hpp
+│       └── home_screen.cpp
+│
 ├── boot/
 │   ├── boot.hpp
 │   └── boot.cpp
@@ -186,17 +191,18 @@ Pode:
 - iniciar o ciclo de vida do console;
 - orquestrar o `update()` dos componentes atualizáveis;
 - expor acesso interno aos módulos (`input()`, `display()`);
-- manter telas e diagnósticos temporários de desenvolvimento.
+- instanciar e conectar as telas da interface.
 
 Não deve:
 
 - implementar lógica de GPIO, SPI ou áudio;
 - substituir o `Boot` na inicialização dos HALs;
+- desenhar ou navegar pelo menu da interface;
 - interpretar JavaScript;
 - executar gameplay;
 - virar uma máquina de estados de boot prematuramente.
 
-Os módulos são membros por valor e declarados na ordem de dependência (`Config` → HALs → `Boot`), pois os HALs guardam uma referência ao `Config`.
+Os módulos são membros por valor e declarados na ordem de dependência (`Config` → HALs → `Boot` → telas), pois os HALs guardam uma referência ao `Config` e as telas guardam referências aos HALs.
 
 ```cpp
 class Console {
@@ -210,16 +216,23 @@ public:
     Display& display();
 
 private:
-    void drawTestScreen();
-
     Config config_;
     Input input_;
     Display display_;
     Boot boot_;
+    HomeScreen homeScreen_;
 };
 ```
 
 As APIs `input()` e `display()` são **internas do firmware**. A futura API JavaScript (`Console.input.isPressed("A")`) é uma camada posterior da SDK e não deve ser confundida com elas.
+
+#### UI
+
+`ui/` contém as telas da interface do console.
+
+As telas recebem referências aos HALs de que precisam (por exemplo, `Display` e `Input`), mas não inicializam hardware. Desenham pela API pública do `Display` e leem eventos pelos métodos do `Input`, sem conhecer GPIOs, pinos ou tipos do LovyanGFX.
+
+`HomeScreen` (`ui/screens/`) é a tela inicial do console. Ela apresenta o menu principal com as opções Jogos, Configuracoes e Sobre (sem acentos, pois a fonte embutida do Display não os suporta), mantém o índice selecionado e trata a navegação circular com UP/DOWN. Nenhuma opção executa ação nesta versão.
 
 #### Boot
 
@@ -730,16 +743,19 @@ setup()
       ├── Boot::addModule(display)
       ├── Boot::addModule(input)
       ├── Boot::begin()   → Config, claimPins() de todos os módulos, begin() de cada um
-      └── drawTestScreen() + diagnóstico no Serial
+      └── HomeScreen::begin()
 
 loop()
  └── Console::update()
-      └── Input::update()
+      ├── Input::update()
+      └── HomeScreen::update()
 ```
 
 Em caso de falha, `Console::begin()` retorna `false` e o `main.cpp` interrompe a execução. O `Console` apenas propaga o erro; o `Boot` é quem imprime o motivo.
 
-O sistema ainda não possui o loop de atualização completo.
+`Input::update()` precisa preceder `HomeScreen::update()`: a tela lê as bordas geradas na atualização corrente do Input.
+
+O sistema ainda não possui o loop de atualização completo; Audio, System e Runtime ainda não participam dele.
 
 A direção planejada para o MVP é um loop cooperativo:
 
@@ -747,6 +763,7 @@ A direção planejada para o MVP é um loop cooperativo:
 loop()
  └── Console::update()
       ├── Input::update()
+      ├── HomeScreen::update()
       ├── Audio::update()
       ├── System::update()
       └── Runtime::update()
@@ -825,9 +842,9 @@ O estado de inicialização dos HALs usa `isInstantiated()` / `setInstantiated()
 
 Os itens abaixo descrevem o estado atual do projeto e não devem ser tratados automaticamente como decisões arquiteturais.
 
-- `Boot` não possui `update()`; `Console::update()` chama `Input::update()` diretamente.
+- `Boot` não possui `update()`; `Console::update()` chama `Input::update()` e `HomeScreen::update()` diretamente.
 - Ainda não existem Audio, Storage, System nem Runtime.
-- A tela de teste (`drawTestScreen()`) em `console.cpp` é temporária e deve sair quando o System/UI existir.
+- O menu principal possui três opções selecionáveis, mas nenhuma delas executa ação.
 
 Problemas conhecidos devem ser corrigidos quando fizerem parte da área afetada pela mudança ou quando forem explicitamente tratados.
 
@@ -839,7 +856,7 @@ Não introduza `-fpermissive` ou outros mecanismos apenas para mascarar problema
 
 Ao alterar o firmware:
 
-1. Preserve a separação entre Console, Boot, Config, HAL, System e Runtime.
+1. Preserve a separação entre Console, Boot, Config, UI, HAL, System e Runtime.
 2. Não coloque lógica de hardware dentro de `Boot`.
 3. Não coloque lógica de sistema dentro de HALs.
 4. Não exponha detalhes físicos do hardware para jogos.
@@ -871,15 +888,17 @@ A evolução planejada do firmware é:
       ↓
 6. Console (Composition Root)
       ↓
-7. Audio
+7. HomeScreen (menu principal)
       ↓
-8. Storage
+8. Audio
       ↓
-9. System
+9. Storage
       ↓
-10. Game Runtime
+10. System
       ↓
-11. JavaScript games
+11. Game Runtime
+      ↓
+12. JavaScript games
 ```
 
 A implementação deve evoluir incrementalmente.

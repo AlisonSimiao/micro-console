@@ -9,6 +9,7 @@ namespace {
 
 constexpr int PANEL_WIDTH = 240;
 constexpr int PANEL_HEIGHT = 320;
+constexpr uint8_t PANEL_OFFSET_ROTATION = 4;
 constexpr uint32_t SPI_WRITE_FREQUENCY = 40000000;
 constexpr uint8_t BACKLIGHT_CHANNEL = 0;
 constexpr uint32_t BACKLIGHT_FREQUENCY = 5000;
@@ -64,6 +65,8 @@ public:
         panelConfig.memory_height = PANEL_HEIGHT;
         panelConfig.panel_width = PANEL_WIDTH;
         panelConfig.panel_height = PANEL_HEIGHT;
+        // Corrige a orientacao do painel no Wokwi sem alterar display.rotation.
+        panelConfig.offset_rotation = PANEL_OFFSET_ROTATION;
         panelConfig.readable = false;
         panel.config(panelConfig);
 

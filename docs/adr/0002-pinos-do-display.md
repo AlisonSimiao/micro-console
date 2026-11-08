@@ -23,6 +23,8 @@ O painel é write-only: o firmware não lê dados de volta, então MISO não é 
 | MISO | -1 |
 | RST | -1 |
 
+O componente ILI9341 do Wokwi apresenta a orientacao do painel invertida. O driver usa `offset_rotation=4` para manter o conteudo legivel; `display.rotation` continua representando a rotacao logica de 0 a 3.
+
 GPIO 25 e 26 permanecem reservados para o áudio.
 
 ## Consequências

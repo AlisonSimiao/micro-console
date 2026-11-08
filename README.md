@@ -1,6 +1,6 @@
 # Micro Console
 
-Firmware para um console baseado em ESP32 DevKit (`esp32dev`), desenvolvido com PlatformIO e Arduino. O projeto está em desenvolvimento: atualmente inclui inicialização do console, configuração via LittleFS, HALs de input e display e uma tela de teste do painel.
+Firmware para um console baseado em ESP32 DevKit (`esp32dev`), desenvolvido com PlatformIO e Arduino. O projeto está em desenvolvimento: atualmente inclui inicialização do console, configuração via LittleFS, HALs de input e display e o menu principal navegável.
 
 ## Recursos atuais
 
@@ -8,6 +8,7 @@ Firmware para um console baseado em ESP32 DevKit (`esp32dev`), desenvolvido com 
 - Configuração do console em `data/config.ini`, carregada do LittleFS.
 - Oito botões com `INPUT_PULLUP`, debounce de 25 ms e consulta de estado e bordas.
 - Painel ILI9341 240x320 via SPI, com rotação, desenho imediato e brilho por PWM.
+- Menu principal com as opções Jogos, Configuracoes e Sobre, com seleção circular por UP/DOWN.
 - Simulação do circuito no Wokwi.
 
 Áudio, armazenamento de jogos, sistema e runtime JavaScript ainda não estão implementados.
@@ -81,7 +82,7 @@ Os pinos do display devem ser válidos para o ESP32 e não podem se repetir entr
 
 ## Interfaces disponíveis
 
-O loop principal chama `Console::update()`, que atualiza o input. A interface pública do console dá acesso ao input e ao display:
+O loop principal chama `Console::update()`, que atualiza o input e a tela inicial. A interface pública do console dá acesso ao input e ao display:
 
 ```cpp
 console.input().isPressed("A");
@@ -93,7 +94,7 @@ console.display().fillRect(10, 10, 40, 30, 0xFFFF);
 console.display().drawText(10, 50, "Ola", 0xFFFF, 1);
 ```
 
-As consultas `wasPressed()` e `wasReleased()` representam bordas detectadas na atualização corrente; consulte-as após a atualização de input. A tela desenhada durante a inicialização é temporária e serve para verificar o display.
+As consultas `wasPressed()` e `wasReleased()` representam bordas detectadas na atualização corrente; consulte-as após a atualização de input. O console inicia no menu principal: UP e DOWN alternam a opção selecionada de forma circular, e os demais botões ainda não executam ações.
 
 ## Estrutura
 
@@ -102,7 +103,9 @@ firmware/
 ├── main.cpp
 ├── boot/       # Orquestra a inicialização
 ├── config/     # Configuração em memória carregada do LittleFS
-├── console/    # Composição do console e tela de teste
+├── console/    # Composição do console
+├── ui/
+│   └── screens/ # Telas da interface (menu principal)
 └── hal/
     ├── core/   # Contratos dos módulos e declarações de pinos
     ├── display/

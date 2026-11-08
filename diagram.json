@@ -3,12 +3,20 @@
   "author": "Alison Simiao",
   "editor": "wokwi",
   "parts": [
-    { "type": "board-esp32-devkit-c-v4", "id": "esp", "top": 182.4, "left": 4.84, "attrs": { "flashSize": "4" } },
+    {
+      "type": "board-esp32-devkit-c-v4",
+      "id": "esp",
+      "top": 182.4,
+      "left": 4.84,
+      "attrs": { "flashSize": "4" }
+    },
     {
       "type": "wokwi-ili9341",
       "id": "lcd",
-      "top": 480,
-      "left": 40
+      "top": -235.1,
+      "left": 145.2,
+      "rotate": 90,
+      "attrs": {}
     },
     {
       "type": "wokwi-led",
