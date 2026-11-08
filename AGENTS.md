@@ -52,6 +52,8 @@ Warnings devem ser avaliados e, quando possível, corrigidos.
 
 O build atual leva aproximadamente 1 segundo.
 
+Não há testes automatizados de hardware. Para o Storage, a compilação não substitui a validação física: com uma placa ESP32 e cartão FAT, verifique cartão ausente, montagem, pinos inválidos, `exists`, `isDirectory`, `getInfo`, abertura, leitura em blocos, fechamento e leitura depois de fechar (deve retornar zero). O circuito Wokwi atual não simula microSD; sem cartão, confirme no monitor serial que o Storage falha como opcional e que Display/Input seguem ativos.
+
 ### Simulação (Wokwi)
 
 O simulador Wokwi carrega o arquivo definido em `wokwi.toml` e não usa `uploadfs`. Para que o LittleFS (`data/config.ini`) exista na simulação, o firmware e a imagem do filesystem são combinados em uma imagem completa da flash:
@@ -110,6 +112,10 @@ firmware/
 │   ├── display/
 │   ├── audio/
 │   └── storage/
+│       ├── storage.hpp
+│       ├── storage.cpp
+│       ├── storage_backend.hpp
+│       └── storage_backend.cpp
 │
 ├── system/
 │   └── ...
@@ -312,6 +318,12 @@ display.miso
 display.rst
 display.rotation
 display.brightness
+
+storage.sck
+storage.miso
+storage.mosi
+storage.cs
+storage.frequency
 ```
 
 O `Config` representa configuração do **console**.
@@ -391,6 +403,38 @@ Storage
 
 Não adicione `update()` ao contrato base apenas para manter uma interface uniforme.
 
+### Storage
+
+`Storage` monta o cartão microSD via SPI e oferece consulta de diretórios/arquivos, informações de arquivo e leitura em blocos. `StorageFile` é não copiável, movível e fecha o arquivo ao ser destruído. O backend usa a biblioteca `SD` do Arduino-ESP32; seus tipos não aparecem em `storage.hpp`.
+
+API pública:
+
+```text
+Storage:
+  isMounted()
+  exists(path)
+  isDirectory(path)
+  open(path, StorageFile&)
+  getInfo(path, StorageFileInfo&)
+
+StorageFile:
+  read(buffer, length)
+  available()
+  size()
+  isOpen()
+  close()
+
+StorageFileInfo:
+  isDirectory
+  size
+```
+
+Os caminhos podem ser relativos à raiz do cartão ou começar com `/`; caminhos nulos, vazios ou com segmento `..` são recusados. `open()` abre apenas arquivos, não diretórios. Leitura de arquivo fechado retorna zero. A API não oferece escrita nesta etapa.
+
+O Storage é opcional no `Boot`: falha de montagem ou de declaração de pinos deixa `isMounted()` falso, mas não impede a inicialização dos módulos obrigatórios. O `Console` o registra depois de Display e Input e disponibiliza `storage()`. Todos os quatro sinais SPI são obrigatórios; Storage não suporta pino `-1`. A montagem SD é síncrona no boot e pode atrasar a exibição do menu quando o cartão está ausente. As decisões sobre módulos opcionais, prioridade de pinos e SPI dedicado estão em [ADR-0004](./docs/adr/0004-modulos-opcionais-e-storage-spi.md).
+
+O Wokwi deste projeto não possui cartão microSD conectado/simulado. A leitura real deve ser validada com cartão físico; a compilação e a inicialização do restante do console podem ser verificadas sem ele.
+
 ---
 
 ## HAL configuration
@@ -449,6 +493,14 @@ HalModule(int pin)
 
 quando o módulo não possui um único `pin`.
 
+### Storage SPI
+
+O namespace `storage.*` define `sck`, `miso`, `mosi`, `cs` e `frequency`. Os defaults atuais são GPIO 5, 35, 2 e 15, a 20 MHz. São uma configuração inicial editável, não uma pinagem definitiva: GPIOs 2, 5 e 15 são pinos de strapping do ESP32; valide o módulo SD e a placa durante o reset e altere-os em `data/config.ini` se necessário. SCK, MOSI e CS precisam ser GPIOs válidos com capacidade de saída; MISO também pode usar GPIOs 34–39. Pinos não podem se repetir.
+
+O backend usa um `SPIClass` dedicado (VSPI) e inicializa esse barramento uma única vez; o Display usa SPI2_HOST com outra pinagem. Não há compartilhamento de barramento SPI nesta implementação. Se isso mudar, a propriedade/inicialização compartilhada deverá ser centralizada antes de reutilizar os pinos.
+
+`storage.frequency` aceita de 400 kHz a 40 MHz. A biblioteca `SD` é fornecida pelo framework Arduino-ESP32 selecionado pelo PlatformIO, sem dependência adicional no `platformio.ini`.
+
 ---
 
 # Boot and HAL collection
@@ -472,13 +524,15 @@ A lógica de hardware continua pertencendo ao próprio HAL.
 
 ### Conflitos de GPIO
 
-Antes de inicializar qualquer HAL, `Boot::begin()` chama `claimPins()` em todos os módulos registrados e acumula as declarações em um `PinClaims` (`hal/core/pin_claims.hpp`, capacidade fixa de 32). Se dois módulos declararem o mesmo GPIO, o boot falha antes de qualquer `begin()` e o Serial cita as duas chaves:
+Antes de inicializar qualquer HAL, `Boot::begin()` chama `claimPins()` em todos os módulos registrados e acumula as declarações em um `PinClaims` (`hal/core/pin_claims.hpp`, capacidade fixa de 32). Módulos obrigatórios têm prioridade. Conflito ou falha de declaração de um módulo obrigatório impede o boot; um módulo registrado por `addOptionalModule()` é ignorado se sua declaração falhar. Para conflitos, o Serial cita as duas chaves:
 
 ```text
 Boot: pin conflict on GPIO 18 between display.cs and input.up
 ```
 
 O `Boot` não conhece as chaves de pino de nenhum módulo; cada HAL declara os seus. A validação específica de cada módulo (GPIO existente, capacidade de saída, faixa) continua no `begin()` do HAL. Ver `docs/adr/0003-declaracao-de-pinos-em-duas-fases.md`.
+
+Uma falha no `begin()` de módulo opcional também é reportada e não interrompe os módulos seguintes. Módulos obrigatórios continuam falhando o boot. As declarações são validadas com prioridade para os obrigatórios, mas os `begin()` mantêm a ordem de registro.
 
 A ordem de inicialização deve ser explícita quando existir dependência entre módulos.
 
@@ -742,7 +796,8 @@ setup()
  └── Console::begin()
       ├── Boot::addModule(display)
       ├── Boot::addModule(input)
-      ├── Boot::begin()   → Config, claimPins() de todos os módulos, begin() de cada um
+      ├── Boot::addOptionalModule(storage)
+      ├── Boot::begin()   → Config, validação de pinos e inicialização dos módulos
       └── HomeScreen::begin()
 
 loop()
@@ -754,6 +809,8 @@ loop()
 Em caso de falha, `Console::begin()` retorna `false` e o `main.cpp` interrompe a execução. O `Console` apenas propaga o erro; o `Boot` é quem imprime o motivo.
 
 `Input::update()` precisa preceder `HomeScreen::update()`: a tela lê as bordas geradas na atualização corrente do Input.
+
+`Console::begin()` registra Display e Input como obrigatórios e Storage como opcional. O cartão é tentado após a configuração e a validação de pinos; uma falha de Storage não interrompe o menu. Consulte o módulo pelo `console.storage()` e verifique `isMounted()` antes de usar as operações de arquivo.
 
 O sistema ainda não possui o loop de atualização completo; Audio, System e Runtime ainda não participam dele.
 
@@ -843,7 +900,8 @@ O estado de inicialização dos HALs usa `isInstantiated()` / `setInstantiated()
 Os itens abaixo descrevem o estado atual do projeto e não devem ser tratados automaticamente como decisões arquiteturais.
 
 - `Boot` não possui `update()`; `Console::update()` chama `Input::update()` e `HomeScreen::update()` diretamente.
-- Ainda não existem Audio, Storage, System nem Runtime.
+- Ainda não existem Audio, System nem Runtime.
+- A leitura do Storage ainda precisa de validação com cartão microSD físico; o circuito Wokwi atual não simula esse periférico.
 - O menu principal possui três opções selecionáveis, mas nenhuma delas executa ação.
 
 Problemas conhecidos devem ser corrigidos quando fizerem parte da área afetada pela mudança ou quando forem explicitamente tratados.
@@ -892,7 +950,7 @@ A evolução planejada do firmware é:
       ↓
 8. Audio
       ↓
-9. Storage
+9. Storage (implementado; validação física pendente)
       ↓
 10. System
       ↓

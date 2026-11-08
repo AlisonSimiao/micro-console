@@ -3,7 +3,12 @@
 #include <Arduino.h>
 
 Console::Console()
-    : config_(), input_(config_), display_(config_), boot_(config_), homeScreen_(display_, input_)
+    : config_(),
+      input_(config_),
+      display_(config_),
+      storage_(config_),
+      boot_(config_),
+      homeScreen_(display_, input_)
 {
 }
 
@@ -19,6 +24,11 @@ bool Console::begin()
         Serial.begin(115200);
         Serial.println("Console: could not register Input module");
         return false;
+    }
+
+    if (!boot_.addOptionalModule(storage_)) {
+        Serial.begin(115200);
+        Serial.println("Console: could not register optional Storage module");
     }
 
     if (!boot_.begin()) {
@@ -49,4 +59,9 @@ Input& Console::input()
 Display& Console::display()
 {
     return display_;
+}
+
+Storage& Console::storage()
+{
+    return storage_;
 }

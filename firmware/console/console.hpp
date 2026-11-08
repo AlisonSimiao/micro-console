@@ -4,6 +4,7 @@
 #include "config/config.hpp"
 #include "hal/display/display.hpp"
 #include "hal/input/input.hpp"
+#include "hal/storage/storage.hpp"
 #include "ui/screens/home_screen.hpp"
 
 class Console {
@@ -15,11 +16,13 @@ public:
 
     Input& input();
     Display& display();
+    Storage& storage();
 
 private:
     Config config_;
     Input input_;
     Display display_;
+    Storage storage_;
     Boot boot_;
     HomeScreen homeScreen_;
 };

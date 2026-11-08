@@ -9,7 +9,7 @@ Cada HAL lê seus pinos do próprio namespace do `Config` e valida apenas o pró
 
 A detecção precisa:
 
-- falhar antes que qualquer módulo inicialize hardware;
+- falhar antes que qualquer módulo obrigatório inicialize hardware;
 - não fazer um HAL consultar o namespace de outro;
 - não colocar conhecimento de pinagem no `Boot`.
 
@@ -21,6 +21,7 @@ Separar a declaração de pinos da inicialização.
 - Cada HAL com GPIOs sobrescreve `claimPins()`, lê apenas o próprio namespace e declara cada pino em uso com a chave de configuração correspondente. Pinos desligados (`-1`) não são declarados.
 - `PinClaims` (`hal/core/pin_claims.hpp`) guarda pares `pin` + `configKey` em um array de tamanho fixo e rejeita o segundo pedido pelo mesmo GPIO, imprimindo as duas chaves.
 - `Boot::begin()` executa `Config.begin()`, depois `claimPins()` em todos os módulos e só então o `begin()` de cada um.
+- Para a política de módulos opcionais e a prioridade de declaração de pinos, ver [ADR-0004](./0004-modulos-opcionais-e-storage-spi.md).
 
 A validação específica de cada módulo (GPIO existente, capacidade de saída, faixas) continua no `begin()` do HAL.
 
@@ -28,10 +29,11 @@ A validação específica de cada módulo (GPIO existente, capacidade de saída,
 
 Positivas:
 
-- conflitos entre módulos falham antes de qualquer configuração de hardware;
+- conflitos entre módulos obrigatórios falham antes de qualquer configuração de hardware;
 - a mensagem identifica as duas chaves envolvidas;
 - o `Boot` continua apenas coordenando, sem lista de chaves de pino;
-- HALs sem GPIO não precisam implementar nada.
+- HALs sem GPIO não precisam implementar nada;
+- módulos opcionais conflitantes podem ser ignorados antes de configurar hardware, sem impedir o restante do console.
 
 Negativas:
 

@@ -1,0 +1,5 @@
+# Módulos opcionais e SPI do Storage
+
+O Storage não pode impedir o uso do console quando um cartão microSD está ausente ou falha ao montar. `Boot` distingue módulos obrigatórios de opcionais: declara primeiro os pinos dos obrigatórios, ignora um opcional cuja declaração conflite e continua a inicialização se o `begin()` opcional falhar. Os módulos obrigatórios mantêm a prioridade, e todos os módulos inicializados preservam a ordem de registro. A montagem SD permanece síncrona no boot por não existir ainda um ciclo de atualização do Storage; portanto, a ausência do cartão pode atrasar a apresentação do menu.
+
+O Storage usa um `SPIClass` VSPI dedicado, distinto do SPI2_HOST do Display, para manter pinagens e inicialização de barramento independentes. Todos os quatro sinais (`sck`, `miso`, `mosi`, `cs`) são obrigatórios nesta implementação; a frequência e os pinos são configuráveis. A pinagem padrão é provisória e deve ser validada na placa, em especial por usar GPIOs de strapping. Se futuramente houver compartilhamento do barramento, sua propriedade e inicialização precisarão ser centralizadas.
