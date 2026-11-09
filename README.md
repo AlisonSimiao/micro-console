@@ -115,25 +115,35 @@ if (console.storage().isMounted()) {
 
 `StorageFile` fecha automaticamente ao sair de escopo e também pode ser fechado explicitamente; leituras em um arquivo fechado retornam zero. `StorageFileInfo` contém apenas `isDirectory` e `size`. As consultas `wasPressed()` e `wasReleased()` representam bordas detectadas na atualização corrente; consulte-as após a atualização de input. O console inicia no menu principal: UP e DOWN alternam a opção selecionada de forma circular, e os demais botões ainda não executam ações.
 
-O `GamePackage` recebe uma referência ao Storage; ele ainda não é um membro do `Console` nem é usado pelo menu:
+O `GamePackage` recebe uma referência ao Storage; ele ainda não é um membro do `Console` nem é usado pelo menu. Como o objeto mantém o índice completo em memória (~9 KB), ele deve ter vida longa:
 
 ```cpp
 #include "game/package/game_package.hpp"
 
-if (console.storage().isMounted()) {
-    GamePackage game(console.storage());
-    if (game.open("/games/example.ali")) {
-        const GameManifest& manifest = game.manifest();
+class GameLibrary {
+public:
+    explicit GameLibrary(Storage& storage) : package_(storage) {}
+
+    void open(const char* path)
+    {
+        if (!package_.open(path)) {
+            return;
+        }
+
+        const GameManifest& manifest = package_.manifest();
         PackageFile entrypoint;
-        if (game.openFile(manifest.entrypoint, entrypoint)) {
+        if (package_.openFile(manifest.entrypoint, entrypoint)) {
             uint8_t buffer[64];
             const size_t count = entrypoint.read(buffer, sizeof(buffer));
         }
     }
-}
+
+private:
+    GamePackage package_; // ~9 KB: não crie GamePackage como variável local
+};
 ```
 
-Use `PackageFile` enquanto consumir o conteúdo; a leitura é limitada ao tamanho declarado no índice e pode ser feita em blocos. EOF prematuro devolve os bytes lidos e fecha o arquivo. Um `PackageFile` aberto pode sobreviver a `GamePackage::close()`, mas o Storage precisa continuar vivo até o arquivo ser fechado ou destruído. O manifesto e o entrypoint são dados, não são executados. O formato, limites e campos do manifesto estão na [especificação `.ali`](./docs/game-package-format.md).
+Use `PackageFile` enquanto consumir o conteúdo; a leitura é limitada ao tamanho declarado no índice e pode ser feita em blocos. EOF prematuro devolve os bytes lidos e fecha o arquivo. Um `PackageFile` aberto pode sobreviver a `GamePackage::close()`, mas o Storage precisa continuar vivo até o arquivo ser fechado ou destruído. Cada `PackageFile` ocupa um dos quatro slots de arquivo aberto do Storage, compartilhados com qualquer outro `StorageFile`. O manifesto e o entrypoint são dados, não são executados. O formato, limites, consumo de memória e campos do manifesto estão na [especificação `.ali`](./docs/game-package-format.md).
 
 ## Estrutura
 

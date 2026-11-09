@@ -15,7 +15,7 @@ O script compila três executáveis nativos com `-Wall -Wextra -Werror`, Address
 - `game_package_reader_test.cpp`: ciclo de vida, falhas de leitura, recursos, leitura incremental e movimentos de `PackageFile`;
 - `game_package_fixtures_test.cpp`: fixtures `.ali` gerados por `make_game_package_fixtures.py`, abertos pelo leitor real.
 
-O fake permite limitar o tamanho de cada leitura, forçar EOF em um offset, observar bytes lidos/arquivos abertos e substituir um arquivo entre operações. Para executar localmente sem sanitizers, use `GAME_PACKAGE_SANITIZERS=0 bash test/run-game-package-tests.sh`.
+O fake reproduz as regras relevantes do Storage real: normalização de caminhos relativos (prefixo `/`), rejeição de segmentos `..`, limite de 128 bytes no caminho normalizado e no máximo quatro arquivos abertos simultaneamente. Ele também permite limitar o tamanho de cada leitura, forçar EOF em um offset, observar bytes lidos/arquivos abertos e substituir um arquivo entre operações. Para executar localmente sem sanitizers, use `GAME_PACKAGE_SANITIZERS=0 bash test/run-game-package-tests.sh`.
 
 **Resultado local:** as três suítes passaram com ASan/UBSan; o build PlatformIO limpo passou sem warnings. A matriz física abaixo não foi executada neste ambiente.
 

@@ -66,7 +66,8 @@ bool parseGameManifest(const char* json, size_t length, GameManifest& manifest)
 
     const JsonObjectConst object = document.as<JsonObjectConst>();
     const JsonVariantConst packageVersion = object["packageVersion"];
-    if (!packageVersion.is<uint16_t>() || packageVersion.as<uint16_t>() != 1 ||
+    if (!packageVersion.is<uint16_t>() ||
+        packageVersion.as<uint16_t>() != ALI_FORMAT_VERSION ||
         !copyString(object, "id", manifest.id, sizeof(manifest.id), 1, 63) ||
         !isValidId(manifest.id) ||
         !copyString(object, "name", manifest.name, sizeof(manifest.name), 1, 63) ||
@@ -92,6 +93,6 @@ bool parseGameManifest(const char* json, size_t length, GameManifest& manifest)
         return false;
     }
 
-    manifest.packageVersion = 1;
+    manifest.packageVersion = ALI_FORMAT_VERSION;
     return true;
 }

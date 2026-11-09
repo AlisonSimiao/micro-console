@@ -4,6 +4,13 @@
 
 namespace {
 
+// Garante que o objeto continue cabendo no orçamento documentado. Se este
+// static_assert falhar, revise o consumo de memória e a documentação antes de
+// aumentar o limite.
+static_assert(
+    sizeof(GamePackage) <= GamePackage::MAX_INSTANCE_BYTES,
+    "GamePackage grew beyond its documented memory budget");
+
 bool isAliPath(const char* path)
 {
     if (path == nullptr) {
@@ -84,6 +91,7 @@ bool GamePackage::open(const char* path)
         bytesRead += count;
     }
     json[bytesRead] = '\0';
+    manifestFile.close();
 
     if (!parseGameManifest(json, bytesRead, manifest_) ||
         findEntry(manifest_.entrypoint) == nullptr ||

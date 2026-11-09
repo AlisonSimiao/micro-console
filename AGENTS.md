@@ -580,6 +580,8 @@ Não introduza dependências implícitas entre HALs sem necessidade.
 
 `GamePackage::open()` valida o cabeçalho, o índice, o manifesto e as referências ao entrypoint e à capa. `exists()` consulta o índice; `openFile()` retorna um `PackageFile` que limita as leituras ao conteúdo da entrada e fecha o arquivo SD ao ser destruído. EOF prematuro retorna os bytes já lidos e fecha o `PackageFile`. Um `PackageFile` aberto sobrevive a `GamePackage::close()`, mas não ao fim da vida do `Storage`. A abertura de uma entrada pode descartar bytes sequencialmente até seu offset, pois `StorageFile` não possui `seek`. O pacote não é executado nem carregado integralmente na RAM. Consulte [a especificação `.ali`](./docs/game-package-format.md) e a [ADR-0005](./docs/adr/0005-formato-do-game-package.md).
 
+O `GamePackage` mantém o índice e o manifesto em RAM (~9 KB) e por isso deve ser um objeto de longa duração (membro do `Console` ou da futura Game Library), nunca uma variável local em `loop()` ou em task com stack pequena; `open()` usa adicionalmente ~4 KB de stack. Cada `PackageFile` ocupa um dos quatro slots de arquivo aberto do `Storage`, compartilhados com qualquer outro `StorageFile`.
+
 ---
 
 # System

@@ -16,6 +16,62 @@ struct StorageFileInfo {
 
 class Storage;
 
+namespace test_storage {
+
+constexpr size_t MAX_PATH_LENGTH = 128;
+constexpr size_t MAX_OPEN_FILES = 4;
+
+// Reproduz as regras de normalizePath() em firmware/hal/storage/storage.cpp:
+// caminhos relativos recebem '/', caminhos com '..' são recusados e o caminho
+// normalizado precisa caber em MAX_PATH_LENGTH - 1 bytes.
+inline bool normalizePath(const char* path, std::string& normalized)
+{
+    if (path == nullptr || path[0] == '\0') {
+        return false;
+    }
+
+    size_t length = 0;
+    while (length < MAX_PATH_LENGTH && path[length] != '\0') {
+        ++length;
+    }
+    if (length == MAX_PATH_LENGTH) {
+        return false;
+    }
+
+    const bool isAbsolute = path[0] == '/';
+    const size_t prefixLength = isAbsolute ? 0 : 1;
+    if (length + prefixLength >= MAX_PATH_LENGTH) {
+        return false;
+    }
+
+    normalized.clear();
+    if (!isAbsolute) {
+        normalized.push_back('/');
+    }
+    normalized.append(path, length);
+
+    const char* segment = normalized.c_str();
+    while (*segment != '\0') {
+        while (*segment == '/') {
+            ++segment;
+        }
+
+        const char* end = segment;
+        while (*end != '\0' && *end != '/') {
+            ++end;
+        }
+
+        if (end - segment == 2 && segment[0] == '.' && segment[1] == '.') {
+            return false;
+        }
+        segment = end;
+    }
+
+    return true;
+}
+
+} // namespace test_storage
+
 class StorageFile {
 public:
     StorageFile() : owner_(nullptr), path_(), bytes_(), position_(0) {}
@@ -74,7 +130,9 @@ public:
 
     bool exists(const char* path) const
     {
-        return path != nullptr && files_.find(path) != files_.end();
+        std::string key;
+        return mounted_ && test_storage::normalizePath(path, key) &&
+               files_.find(key) != files_.end();
     }
 
     bool isDirectory(const char* path) const
@@ -86,11 +144,12 @@ public:
     bool getInfo(const char* path, StorageFileInfo& info) const
     {
         info = {false, 0};
-        if (path == nullptr) {
+        std::string key;
+        if (!mounted_ || !test_storage::normalizePath(path, key)) {
             return false;
         }
         const std::map<std::string, std::vector<uint8_t> >::const_iterator found =
-            files_.find(path);
+            files_.find(key);
         if (found == files_.end()) {
             return false;
         }
@@ -101,12 +160,13 @@ public:
     bool open(const char* path, StorageFile& file) const
     {
         file.close();
-        if (!mounted_ || path == nullptr) {
+        std::string key;
+        if (!mounted_ || !test_storage::normalizePath(path, key)) {
             return false;
         }
         const std::map<std::string, std::vector<uint8_t> >::const_iterator found =
-            files_.find(path);
-        if (found == files_.end()) {
+            files_.find(key);
+        if (found == files_.end() || openFileCount_ >= test_storage::MAX_OPEN_FILES) {
             return false;
         }
         file.attach(*const_cast<Storage*>(this), found->first, found->second);
@@ -115,19 +175,25 @@ public:
 
     void addFile(const std::string& path, const std::vector<uint8_t>& bytes)
     {
-        files_[path] = bytes;
+        std::string key;
+        if (test_storage::normalizePath(path.c_str(), key)) {
+            files_[key] = bytes;
+        }
     }
 
     void replaceFile(const std::string& path, const std::vector<uint8_t>& bytes)
     {
-        files_[path] = bytes;
+        addFile(path, bytes);
     }
 
     void setMaxReadChunk(size_t size) { maxReadChunk_ = size; }
 
     void setFailAt(const std::string& path, size_t offset)
     {
-        failAt_[path] = offset;
+        std::string key;
+        if (test_storage::normalizePath(path.c_str(), key)) {
+            failAt_[key] = offset;
+        }
     }
 
     size_t openFileCount() const { return openFileCount_; }

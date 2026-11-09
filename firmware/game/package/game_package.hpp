@@ -5,9 +5,15 @@
 #include "game/package/game_manifest.hpp"
 #include "game/package/package_reader.hpp"
 
+// Abre e valida um pacote `.ali`, mantendo o índice completo e o manifesto em
+// memória. O objeto é grande (~9 KB), então deve ter vida longa: mantenha-o como
+// membro do Console/Game Library, nunca como variável local em `loop()` ou em
+// uma task com stack pequena. `open()` usa ainda um buffer de manifesto de
+// MAX_MANIFEST_SIZE + 1 bytes na stack.
 class GamePackage {
 public:
     static constexpr size_t MAX_MANIFEST_SIZE = GAME_MANIFEST_MAX_SIZE;
+    static constexpr size_t MAX_INSTANCE_BYTES = 9500;
 
     explicit GamePackage(Storage& storage);
 

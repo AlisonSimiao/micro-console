@@ -75,3 +75,10 @@ Exemplo:
 O leitor mantém o índice e o manifesto limitados pelos valores acima, nunca carrega todos os conteúdos do pacote na RAM e limita cada leitura de arquivo ao intervalo indexado. A abertura de uma entrada avança sequencialmente pelo pacote até seu offset, pois o Storage não oferece `seek`. Uma leitura que encontra EOF antes do tamanho declarado fecha `PackageFile` e retorna os bytes que conseguiu ler; chamadas seguintes retornam zero.
 
 Um `PackageFile` já aberto possui seu próprio `StorageFile` e permanece legível após `GamePackage::close()`. Ele fecha ao chamar `close()` ou ao ser destruído. O `Storage` deve continuar vivo durante toda a vida do `PackageFile`.
+
+## Memória e arquivos abertos
+
+`GamePackage` mantém o índice completo (até 64 entradas) e o manifesto em memória, ocupando cerca de 9 KB. `open()` usa adicionalmente um buffer de até 4097 bytes na stack. Por isso o objeto deve ter vida longa — por exemplo, como membro do `Console` ou da futura Game Library — e não deve ser criado como variável local em `loop()` ou em uma task com stack pequena. Um `static_assert` no firmware e nos testes impede que o objeto ultrapasse o orçamento documentado.
+
+`PackageFile` ocupa um dos quatro slots de arquivo aberto do Storage. Esse limite é compartilhado com qualquer outro `StorageFile` aberto pelo console: abrir um quinto arquivo retorna falso até que um slot seja liberado.
+

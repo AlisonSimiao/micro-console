@@ -14,6 +14,9 @@ static_assert(!std::is_copy_constructible<GamePackage>::value, "GamePackage must
 static_assert(!std::is_copy_assignable<GamePackage>::value, "GamePackage must be non-copyable");
 static_assert(!std::is_copy_constructible<PackageFile>::value, "PackageFile must be non-copyable");
 static_assert(!std::is_copy_assignable<PackageFile>::value, "PackageFile must be non-copyable");
+static_assert(
+    sizeof(GamePackage) <= GamePackage::MAX_INSTANCE_BYTES,
+    "GamePackage must stay within its documented memory budget");
 
 namespace {
 
@@ -155,17 +158,72 @@ void testOpenPathBoundaries()
     Storage storage;
     GamePackage package(storage);
 
-    const std::string path127 = std::string(123, 'p') + ".ali";
-    assert(path127.size() == 127);
-    addValidPackage(storage, path127.c_str());
-    assert(package.open(path127.c_str()));
+    // O Storage real acrescenta '/' a caminhos relativos antes de validar o
+    // limite de 128 bytes. Um caminho absoluto de 127 bytes é aceito.
+    const std::string absolute127 = "/" + std::string(122, 'p') + ".ali";
+    assert(absolute127.size() == 127);
+    addValidPackage(storage, absolute127.c_str());
+    assert(package.open(absolute127.c_str()));
+    assert(package.isValid());
 
+    // Um caminho relativo de 126 bytes vira 127 normalizado e é aceito.
     package.close();
-    const std::string path128 = std::string(124, 'p') + ".ali";
-    assert(path128.size() == 128);
-    storage.addFile(path128, packageBytes());
-    assert(!package.open(path128.c_str()));
+    const std::string relative126 = std::string(122, 'p') + ".ali";
+    assert(relative126.size() == 126);
+    addValidPackage(storage, relative126.c_str());
+    assert(package.open(relative126.c_str()));
+    assert(package.isValid());
+
+    // Um caminho relativo de 127 bytes vira 128 normalizado e é recusado.
+    package.close();
+    const std::string relative127 = std::string(123, 'p') + ".ali";
+    assert(relative127.size() == 127);
+    storage.addFile(relative127, packageBytes());
+    assert(!package.open(relative127.c_str()));
     assert(!package.isValid());
+
+    // Um caminho absoluto de 128 bytes também é recusado.
+    const std::string absolute128 = "/" + std::string(123, 'p') + ".ali";
+    assert(absolute128.size() == 128);
+    storage.addFile(absolute128, packageBytes());
+    assert(!package.open(absolute128.c_str()));
+    assert(!package.isValid());
+}
+
+void testOpenFileLimitIsSharedWithStorage()
+{
+    Storage storage;
+    addValidPackage(storage);
+    GamePackage package(storage);
+    assert(package.open(PACKAGE_PATH));
+
+    // O Storage mantém no máximo quatro arquivos abertos por vez.
+    PackageFile files[4];
+    const char* const paths[4] = {
+        "manifest.json",
+        "Codes/main.js",
+        "cover.bin",
+        "Assets/large.bin",
+    };
+    for (size_t i = 0; i < 4; ++i) {
+        assert(package.openFile(paths[i], files[i]));
+    }
+    assert(storage.openFileCount() == 4);
+
+    PackageFile extra;
+    assert(!package.openFile("empty.bin", extra));
+    assert(!extra.isOpen());
+
+    files[0].close();
+    assert(storage.openFileCount() == 3);
+    assert(package.openFile("empty.bin", extra));
+    assert(storage.openFileCount() == 4);
+
+    extra.close();
+    for (size_t i = 1; i < 4; ++i) {
+        files[i].close();
+    }
+    assert(storage.openFileCount() == 0);
 }
 
 void testPackageReadsOnlyIndexedMetadataAndPayload()
@@ -540,6 +598,7 @@ int main()
     testGamePackageLifecycle();
     testGamePackageFilesAndClose();
     testOpenPathBoundaries();
+    testOpenFileLimitIsSharedWithStorage();
     testPackageReadsOnlyIndexedMetadataAndPayload();
     testPackageFileReadAndMoves();
     testPackageFilePrematureEndCloses();
