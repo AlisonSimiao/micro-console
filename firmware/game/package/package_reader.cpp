@@ -61,7 +61,7 @@ size_t PackageFile::read(uint8_t* buffer, size_t length)
 
     const size_t requested = length < remaining_ ? length : remaining_;
     const size_t count = file_.read(buffer, requested);
-    if (count > requested) {
+    if (count == 0 || count > requested) {
         close();
         return 0;
     }
@@ -200,7 +200,22 @@ bool PackageReader::openFile(
         return false;
     }
 
-    uint32_t bytesToSkip = entry.offset;
+    uint8_t headerBytes[HEADER_SIZE];
+    if (!readExact(storageFile, headerBytes, sizeof(headerBytes))) {
+        return false;
+    }
+
+    PackageHeader header{};
+    if (!decodePackageHeader(headerBytes, sizeof(headerBytes), packageSize, header)) {
+        return false;
+    }
+
+    const uint64_t payloadStart = HEADER_SIZE + static_cast<uint64_t>(header.indexSize);
+    if (!isPackageEntryInRange(entry, payloadStart, packageSize)) {
+        return false;
+    }
+
+    uint32_t bytesToSkip = entry.offset - HEADER_SIZE;
     uint8_t buffer[MAX_SKIP_BUFFER_SIZE];
     while (bytesToSkip > 0) {
         const size_t chunk = bytesToSkip < sizeof(buffer) ? bytesToSkip : sizeof(buffer);

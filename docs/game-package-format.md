@@ -72,4 +72,6 @@ Exemplo:
 - Versões de container diferentes de V1 são incompatíveis e devem ser rejeitadas.
 - Cabeçalho ou índice truncado, leitura curta de conteúdo, intervalo inválido/sobreposto, caminho inválido, manifesto inválido ou referência ausente tornam o pacote inválido.
 
-O leitor mantém o índice e o manifesto limitados pelos valores acima, nunca carrega todos os conteúdos do pacote na RAM e limita cada leitura de arquivo ao intervalo indexado. A abertura de uma entrada avança sequencialmente pelo pacote até seu offset, pois o Storage não oferece `seek`.
+O leitor mantém o índice e o manifesto limitados pelos valores acima, nunca carrega todos os conteúdos do pacote na RAM e limita cada leitura de arquivo ao intervalo indexado. A abertura de uma entrada avança sequencialmente pelo pacote até seu offset, pois o Storage não oferece `seek`. Uma leitura que encontra EOF antes do tamanho declarado fecha `PackageFile` e retorna os bytes que conseguiu ler; chamadas seguintes retornam zero.
+
+Um `PackageFile` já aberto possui seu próprio `StorageFile` e permanece legível após `GamePackage::close()`. Ele fecha ao chamar `close()` ou ao ser destruído. O `Storage` deve continuar vivo durante toda a vida do `PackageFile`.

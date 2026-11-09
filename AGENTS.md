@@ -61,6 +61,8 @@ python3 test/make_game_package_fixtures.py /path/to/fixture-output
 
 Execute `pio run` antes para instalar as dependências. Esses testes não substituem a validação física: com uma placa ESP32 e cartão FAT, verifique cartão ausente, montagem, pacotes válidos/inválidos e leitura em blocos de um arquivo interno maior que o buffer. O circuito Wokwi atual não simula microSD; sem cartão, confirme no monitor serial que o Storage falha como opcional e que Display/Input seguem ativos.
 
+A matriz de hardware detalhada e seu status estão em [docs/game-package-validation.md](./docs/game-package-validation.md).
+
 ### Simulação (Wokwi)
 
 O simulador Wokwi carrega o arquivo definido em `wokwi.toml` e não usa `uploadfs`. Para que o LittleFS (`data/config.ini`) exista na simulação, o firmware e a imagem do filesystem são combinados em uma imagem completa da flash:
@@ -576,7 +578,7 @@ Não introduza dependências implícitas entre HALs sem necessidade.
 
 `game/package/` abre pacotes `.ali` usando somente a API pública do Storage. O container V1 é binário sequencial, sem compressão, com índice no início e manifesto JSON (`manifest.json`) limitado a 4096 bytes. O índice aceita até 64 entradas, com caminhos de até 127 bytes.
 
-`GamePackage::open()` valida o cabeçalho, o índice, o manifesto e as referências ao entrypoint e à capa. `exists()` consulta o índice; `openFile()` retorna um `PackageFile` que limita as leituras ao conteúdo da entrada e fecha o arquivo SD ao ser destruído. A abertura de uma entrada pode descartar bytes sequencialmente até seu offset, pois `StorageFile` não possui `seek`. O pacote não é executado nem carregado integralmente na RAM. Consulte [a especificação `.ali`](./docs/game-package-format.md) e a [ADR-0005](./docs/adr/0005-formato-do-game-package.md).
+`GamePackage::open()` valida o cabeçalho, o índice, o manifesto e as referências ao entrypoint e à capa. `exists()` consulta o índice; `openFile()` retorna um `PackageFile` que limita as leituras ao conteúdo da entrada e fecha o arquivo SD ao ser destruído. EOF prematuro retorna os bytes já lidos e fecha o `PackageFile`. Um `PackageFile` aberto sobrevive a `GamePackage::close()`, mas não ao fim da vida do `Storage`. A abertura de uma entrada pode descartar bytes sequencialmente até seu offset, pois `StorageFile` não possui `seek`. O pacote não é executado nem carregado integralmente na RAM. Consulte [a especificação `.ali`](./docs/game-package-format.md) e a [ADR-0005](./docs/adr/0005-formato-do-game-package.md).
 
 ---
 

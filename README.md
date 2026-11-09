@@ -133,7 +133,7 @@ if (console.storage().isMounted()) {
 }
 ```
 
-Use `PackageFile` enquanto consumir o conteúdo; a leitura é limitada ao tamanho declarado no índice e pode ser feita em blocos. O manifesto e o entrypoint são dados, não são executados. O formato, limites e campos do manifesto estão na [especificação `.ali`](./docs/game-package-format.md).
+Use `PackageFile` enquanto consumir o conteúdo; a leitura é limitada ao tamanho declarado no índice e pode ser feita em blocos. EOF prematuro devolve os bytes lidos e fecha o arquivo. Um `PackageFile` aberto pode sobreviver a `GamePackage::close()`, mas o Storage precisa continuar vivo até o arquivo ser fechado ou destruído. O manifesto e o entrypoint são dados, não são executados. O formato, limites e campos do manifesto estão na [especificação `.ali`](./docs/game-package-format.md).
 
 ## Estrutura
 
@@ -171,3 +171,5 @@ python3 test/make_game_package_fixtures.py /path/to/fixture-output
 ```
 
 Os testes nativos validam o cabeçalho, os registros do índice, os caminhos e o manifesto. O gerador cria pacotes válidos e casos malformados para copiar ao cartão; eles não simulam a integração com o Storage. Para validar o cartão, use uma placa ESP32 e cartão FAT funcional com a pinagem definida em `data/config.ini`. Teste cartão ausente, pacotes gerados, arquivo interno inexistente e leitura incremental do `Assets/large.bin` (16 KiB, maior que o buffer de exemplo). O Wokwi deste projeto não cobre esses testes físicos; sem cartão, a inicialização opcional do Storage deve falhar sem impedir o restante do console.
+
+A matriz detalhada de integração física e o status de execução estão em [`docs/game-package-validation.md`](./docs/game-package-validation.md).

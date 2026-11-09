@@ -41,6 +41,7 @@ bool decodePackageHeader(
     if (header.version != ALI_FORMAT_VERSION ||
         header.entryCount == 0 || header.entryCount > ALI_MAX_ENTRIES ||
         header.indexSize > ALI_MAX_INDEX_SIZE ||
+        header.indexSize < header.entryCount * (1 + 1 + 8) ||
         header.indexSize > packageSize - ALI_HEADER_SIZE) {
         header = {};
         return false;
