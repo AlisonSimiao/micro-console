@@ -12,6 +12,11 @@ struct StorageFileInfo {
     size_t size;
 };
 
+struct StorageEntry {
+    char name[128];
+    bool isDirectory;
+};
+
 class StorageFile {
 public:
     StorageFile();
@@ -38,6 +43,30 @@ private:
     uint8_t slot;
 };
 
+class StorageDirectory {
+public:
+    StorageDirectory();
+    ~StorageDirectory();
+
+    StorageDirectory(const StorageDirectory&) = delete;
+    StorageDirectory& operator=(const StorageDirectory&) = delete;
+
+    StorageDirectory(StorageDirectory&& other) noexcept;
+    StorageDirectory& operator=(StorageDirectory&& other) noexcept;
+
+    bool next(StorageEntry& entry);
+    bool isOpen() const;
+    void close();
+
+private:
+    friend class Storage;
+
+    void attach(StorageBackend& backend, uint8_t slot);
+
+    StorageBackend* backend;
+    uint8_t slot;
+};
+
 class Storage : public hal_module {
 public:
     explicit Storage(Config& config);
@@ -49,6 +78,7 @@ public:
     bool exists(const char* path) const;
     bool isDirectory(const char* path) const;
     bool open(const char* path, StorageFile& file) const;
+    bool openDirectory(const char* path, StorageDirectory& directory) const;
     bool getInfo(const char* path, StorageFileInfo& info) const;
 
 private:

@@ -211,6 +211,62 @@ void StorageFile::close()
     }
 }
 
+StorageDirectory::StorageDirectory() : backend(nullptr), slot(0) {}
+
+StorageDirectory::~StorageDirectory()
+{
+    close();
+}
+
+StorageDirectory::StorageDirectory(StorageDirectory&& other) noexcept
+    : backend(other.backend), slot(other.slot)
+{
+    other.backend = nullptr;
+}
+
+StorageDirectory& StorageDirectory::operator=(StorageDirectory&& other) noexcept
+{
+    if (this != &other) {
+        close();
+        backend = other.backend;
+        slot = other.slot;
+        other.backend = nullptr;
+    }
+
+    return *this;
+}
+
+void StorageDirectory::attach(StorageBackend& directoryBackend, uint8_t directorySlot)
+{
+    close();
+    backend = &directoryBackend;
+    slot = directorySlot;
+}
+
+bool StorageDirectory::next(StorageEntry& entry)
+{
+    entry.name[0] = '\0';
+    entry.isDirectory = false;
+    if (backend == nullptr) {
+        return false;
+    }
+
+    return backend->nextEntry(slot, entry.name, sizeof(entry.name), entry.isDirectory);
+}
+
+bool StorageDirectory::isOpen() const
+{
+    return backend != nullptr && backend->isFileOpen(slot);
+}
+
+void StorageDirectory::close()
+{
+    if (backend != nullptr) {
+        backend->close(slot);
+        backend = nullptr;
+    }
+}
+
 Storage::Storage(Config& config) : config(config), backend() {}
 
 bool Storage::begin()
@@ -295,6 +351,24 @@ bool Storage::open(const char* path, StorageFile& file) const
     }
 
     file.attach(backend, slot);
+    return true;
+}
+
+bool Storage::openDirectory(const char* path, StorageDirectory& directory) const
+{
+    directory.close();
+
+    char normalized[MAX_PATH_LENGTH];
+    if (!normalizePath(path, normalized) || !isMounted()) {
+        return false;
+    }
+
+    uint8_t slot = 0;
+    if (!backend.openDirectory(normalized, slot)) {
+        return false;
+    }
+
+    directory.attach(backend, slot);
     return true;
 }
 

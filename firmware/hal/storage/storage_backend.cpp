@@ -1,6 +1,7 @@
 #include "hal/storage/storage_backend.hpp"
 
 #include <Arduino.h>
+#include <cstring>
 
 StorageBackend::StorageBackend()
     : spi(VSPI), files{}, spiStarted(false), mounted(false)
@@ -92,6 +93,37 @@ bool StorageBackend::open(const char* path, uint8_t& slot)
     return false;
 }
 
+bool StorageBackend::openDirectory(const char* path, uint8_t& slot)
+{
+    if (!mounted) {
+        return false;
+    }
+
+    for (uint8_t i = 0; i < MAX_OPEN_FILES; ++i) {
+        if (files[i].inUse) {
+            continue;
+        }
+
+        File file = SD.open(path, FILE_READ);
+        if (!file) {
+            return false;
+        }
+
+        if (!file.isDirectory()) {
+            file.close();
+            return false;
+        }
+
+        files[i].file = file;
+        files[i].inUse = true;
+        slot = i;
+        return true;
+    }
+
+    Serial.println("Storage: maximum number of open files reached");
+    return false;
+}
+
 bool StorageBackend::getInfo(const char* path, bool& isDirectory, size_t& size) const
 {
     if (!mounted) {
@@ -136,6 +168,38 @@ size_t StorageBackend::size(uint8_t slot) const
 bool StorageBackend::isFileOpen(uint8_t slot) const
 {
     return slot < MAX_OPEN_FILES && files[slot].inUse && static_cast<bool>(files[slot].file);
+}
+
+bool StorageBackend::nextEntry(uint8_t slot, char* name, size_t capacity, bool& isDirectory)
+{
+    if (!isFileOpen(slot) || name == nullptr || capacity == 0) {
+        return false;
+    }
+
+    for (;;) {
+        File entry = files[slot].file.openNextFile();
+        if (!entry) {
+            return false;
+        }
+
+        const char* const entryName = entry.name();
+        const bool entryIsDirectory = entry.isDirectory();
+        bool copied = false;
+        if (entryName != nullptr) {
+            const size_t length = std::strlen(entryName);
+            if (length > 0 && length < capacity &&
+                std::strcmp(entryName, ".") != 0 && std::strcmp(entryName, "..") != 0) {
+                std::memcpy(name, entryName, length + 1);
+                isDirectory = entryIsDirectory;
+                copied = true;
+            }
+        }
+
+        entry.close();
+        if (copied) {
+            return true;
+        }
+    }
 }
 
 void StorageBackend::close(uint8_t slot)

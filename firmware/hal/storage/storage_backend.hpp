@@ -19,12 +19,14 @@ public:
     bool exists(const char* path) const;
     bool isDirectory(const char* path) const;
     bool open(const char* path, uint8_t& slot);
+    bool openDirectory(const char* path, uint8_t& slot);
     bool getInfo(const char* path, bool& isDirectory, size_t& size) const;
 
     size_t read(uint8_t slot, uint8_t* buffer, size_t length);
     size_t available(uint8_t slot);
     size_t size(uint8_t slot) const;
     bool isFileOpen(uint8_t slot) const;
+    bool nextEntry(uint8_t slot, char* name, size_t capacity, bool& isDirectory);
     void close(uint8_t slot);
 
 private:

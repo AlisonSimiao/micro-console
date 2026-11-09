@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstring>
 #include <map>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -14,7 +15,13 @@ struct StorageFileInfo {
     size_t size;
 };
 
+struct StorageEntry {
+    char name[128];
+    bool isDirectory;
+};
+
 class Storage;
+class StorageDirectory;
 
 namespace test_storage {
 
@@ -68,6 +75,21 @@ inline bool normalizePath(const char* path, std::string& normalized)
     }
 
     return true;
+}
+
+inline std::string parentPath(const std::string& path)
+{
+    const size_t separator = path.find_last_of('/');
+    if (separator == std::string::npos || separator == 0) {
+        return "/";
+    }
+    return path.substr(0, separator);
+}
+
+inline std::string baseName(const std::string& path)
+{
+    const size_t separator = path.find_last_of('/');
+    return separator == std::string::npos ? path : path.substr(separator + 1);
 }
 
 } // namespace test_storage
@@ -132,13 +154,14 @@ public:
     {
         std::string key;
         return mounted_ && test_storage::normalizePath(path, key) &&
-               files_.find(key) != files_.end();
+               (files_.find(key) != files_.end() || directories_.find(key) != directories_.end());
     }
 
     bool isDirectory(const char* path) const
     {
-        (void)path;
-        return false;
+        std::string key;
+        return mounted_ && test_storage::normalizePath(path, key) &&
+               directories_.find(key) != directories_.end();
     }
 
     bool getInfo(const char* path, StorageFileInfo& info) const
@@ -147,6 +170,10 @@ public:
         std::string key;
         if (!mounted_ || !test_storage::normalizePath(path, key)) {
             return false;
+        }
+        if (directories_.find(key) != directories_.end()) {
+            info.isDirectory = true;
+            return true;
         }
         const std::map<std::string, std::vector<uint8_t> >::const_iterator found =
             files_.find(key);
@@ -173,12 +200,28 @@ public:
         return true;
     }
 
+    bool openDirectory(const char* path, StorageDirectory& directory) const;
+
     void addFile(const std::string& path, const std::vector<uint8_t>& bytes)
     {
         std::string key;
         if (test_storage::normalizePath(path.c_str(), key)) {
             files_[key] = bytes;
         }
+    }
+
+    void addDirectory(const std::string& path)
+    {
+        std::string key;
+        if (test_storage::normalizePath(path.c_str(), key)) {
+            directories_.insert(key);
+        }
+    }
+
+    void clearFiles()
+    {
+        files_.clear();
+        failAt_.clear();
     }
 
     void replaceFile(const std::string& path, const std::vector<uint8_t>& bytes)
@@ -201,6 +244,7 @@ public:
 
 private:
     friend class StorageFile;
+    friend class StorageDirectory;
 
     size_t read(const std::string& path, const std::vector<uint8_t>& bytes,
                 size_t position, uint8_t* buffer, size_t length) const
@@ -241,7 +285,96 @@ private:
     mutable size_t bytesRead_;
     std::map<std::string, std::vector<uint8_t> > files_;
     std::map<std::string, size_t> failAt_;
+    std::set<std::string> directories_;
 };
+
+class StorageDirectory {
+public:
+    StorageDirectory() : owner_(nullptr), index_(0) {}
+    ~StorageDirectory() { close(); }
+
+    StorageDirectory(const StorageDirectory&) = delete;
+    StorageDirectory& operator=(const StorageDirectory&) = delete;
+
+    bool next(StorageEntry& entry)
+    {
+        entry.name[0] = '\0';
+        entry.isDirectory = false;
+        while (owner_ != nullptr && index_ < entries_.size()) {
+            const std::pair<std::string, bool>& current = entries_[index_++];
+            if (current.first.size() >= sizeof(entry.name)) {
+                continue;
+            }
+            std::memcpy(entry.name, current.first.c_str(), current.first.size() + 1);
+            entry.isDirectory = current.second;
+            return true;
+        }
+        return false;
+    }
+
+    bool isOpen() const { return owner_ != nullptr; }
+
+    void close()
+    {
+        if (owner_ != nullptr) {
+            owner_->fileClosed();
+            owner_ = nullptr;
+            entries_.clear();
+            index_ = 0;
+        }
+    }
+
+private:
+    friend class Storage;
+
+    void attach(Storage& storage, const std::vector<std::pair<std::string, bool> >& entries)
+    {
+        close();
+        owner_ = &storage;
+        entries_ = entries;
+        index_ = 0;
+        owner_->fileOpened();
+    }
+
+    Storage* owner_;
+    std::vector<std::pair<std::string, bool> > entries_;
+    size_t index_;
+};
+
+inline bool Storage::openDirectory(const char* path, StorageDirectory& directory) const
+{
+    directory.close();
+    std::string key;
+    if (!mounted_ || !test_storage::normalizePath(path, key) ||
+        directories_.find(key) == directories_.end() ||
+        openFileCount_ >= test_storage::MAX_OPEN_FILES) {
+        return false;
+    }
+
+    std::set<std::string> names;
+    for (std::map<std::string, std::vector<uint8_t> >::const_iterator it = files_.begin();
+         it != files_.end(); ++it) {
+        if (test_storage::parentPath(it->first) == key) {
+            names.insert(test_storage::baseName(it->first));
+        }
+    }
+    for (std::set<std::string>::const_iterator it = directories_.begin();
+         it != directories_.end(); ++it) {
+        if (*it != key && test_storage::parentPath(*it) == key) {
+            names.insert(test_storage::baseName(*it));
+        }
+    }
+
+    std::vector<std::pair<std::string, bool> > entries;
+    for (std::set<std::string>::const_iterator it = names.begin(); it != names.end(); ++it) {
+        const std::string child = key == "/" ? "/" + *it : key + "/" + *it;
+        entries.push_back(std::make_pair(
+            *it, directories_.find(child) != directories_.end()));
+    }
+
+    directory.attach(*const_cast<Storage*>(this), entries);
+    return true;
+}
 
 inline void StorageFile::attach(
     Storage& storage,

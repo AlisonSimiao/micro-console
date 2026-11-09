@@ -7,6 +7,7 @@ Console::Console()
       input_(config_),
       display_(config_),
       storage_(config_),
+      gameLibrary_(storage_),
       boot_(config_),
       homeScreen_(display_, input_)
 {
@@ -33,6 +34,16 @@ bool Console::begin()
 
     if (!boot_.begin()) {
         return false;
+    }
+
+    if (storage_.isMounted()) {
+        if (gameLibrary_.scan()) {
+            Serial.print("Console: game library found ");
+            Serial.print(gameLibrary_.count());
+            Serial.println(" game(s)");
+        } else {
+            Serial.println("Console: game library directory unavailable");
+        }
     }
 
     homeScreen_.begin();
@@ -64,4 +75,9 @@ Display& Console::display()
 Storage& Console::storage()
 {
     return storage_;
+}
+
+GameLibrary& Console::gameLibrary()
+{
+    return gameLibrary_;
 }

@@ -1,6 +1,6 @@
 # Micro Console
 
-Firmware para um console baseado em ESP32 DevKit (`esp32dev`), desenvolvido com PlatformIO e Arduino. O projeto está em desenvolvimento: atualmente inclui inicialização do console, configuração via LittleFS, HALs de input, display e Storage, leitor de pacotes de jogos e o menu principal navegável.
+Firmware para um console baseado em ESP32 DevKit (`esp32dev`), desenvolvido com PlatformIO e Arduino. O projeto está em desenvolvimento: atualmente inclui inicialização do console, configuração via LittleFS, HALs de input, display e Storage, leitor de pacotes de jogos, descoberta de jogos no cartão e o menu principal navegável.
 
 ## Recursos atuais
 
@@ -10,11 +10,12 @@ Firmware para um console baseado em ESP32 DevKit (`esp32dev`), desenvolvido com 
 - Painel ILI9341 240x320 via SPI, com rotação, desenho imediato e brilho por PWM.
 - Storage HAL para microSD por SPI, com consultas e leitura de arquivos em blocos; sua falha não bloqueia o console.
 - Game Package para validar pacotes `.ali`, ler o manifesto e abrir arquivos internos incrementalmente.
+- Game Library para descobrir e representar os jogos válidos em `/games`, sem executá-los.
 - Menu principal com as opções Jogos, Configuracoes e Sobre, com seleção circular por UP/DOWN.
 - Simulação do circuito no Wokwi.
 
-Game Library, áudio, sistema e runtime JavaScript ainda não estão implementados.
-O formato `.ali` V1 está descrito em [`docs/game-package-format.md`](./docs/game-package-format.md), e sua decisão arquitetural em [`ADR-0005`](./docs/adr/0005-formato-do-game-package.md).
+A tela que consome a Game Library, o áudio, o sistema e o runtime JavaScript ainda não estão implementados.
+O formato `.ali` V1 está descrito em [`docs/game-package-format.md`](./docs/game-package-format.md), e sua decisão arquitetural em [`ADR-0005`](./docs/adr/0005-formato-do-game-package.md). A Game Library está documentada em [`docs/game-library.md`](./docs/game-library.md).
 
 ## Hardware padrão
 
@@ -110,40 +111,51 @@ if (console.storage().isMounted()) {
         uint8_t buffer[64];
         const size_t count = file.read(buffer, sizeof(buffer));
     }
+
+    StorageDirectory directory;
+    StorageEntry entry;
+    if (console.storage().openDirectory("/games", directory)) {
+        while (directory.next(entry)) {
+            // entry.name e entry.isDirectory: apenas filhos imediatos
+        }
+    }
 }
 ```
 
-`StorageFile` fecha automaticamente ao sair de escopo e também pode ser fechado explicitamente; leituras em um arquivo fechado retornam zero. `StorageFileInfo` contém apenas `isDirectory` e `size`. As consultas `wasPressed()` e `wasReleased()` representam bordas detectadas na atualização corrente; consulte-as após a atualização de input. O console inicia no menu principal: UP e DOWN alternam a opção selecionada de forma circular, e os demais botões ainda não executam ações.
+`StorageFile` fecha automaticamente ao sair de escopo e também pode ser fechado explicitamente; leituras em um arquivo fechado retornam zero. `StorageDirectory` faz o mesmo e ocupa um dos quatro slots de arquivo aberto; `next()` lista apenas filhos imediatos, sem recursão. `StorageFileInfo` contém apenas `isDirectory` e `size`. As consultas `wasPressed()` e `wasReleased()` representam bordas detectadas na atualização corrente; consulte-as após a atualização de input. O console inicia no menu principal: UP e DOWN alternam a opção selecionada de forma circular, e os demais botões ainda não executam ações.
 
-O `GamePackage` recebe uma referência ao Storage; ele ainda não é um membro do `Console` nem é usado pelo menu. Como o objeto mantém o índice completo em memória (~9 KB), ele deve ter vida longa:
+A Game Library é populada no boot quando o cartão monta e fica disponível pelo `Console`:
+
+```cpp
+#include "game/library/game_library.hpp"
+
+console.gameLibrary().scan(); // recarrega /games
+for (size_t i = 0; i < console.gameLibrary().count(); ++i) {
+    const GameInfo* game = console.gameLibrary().get(i);
+    // game->name, game->packagePath, game->coverPath, ...
+}
+```
+
+A lista contém apenas pacotes válidos, na ordem do sistema de arquivos. `/games` é procurado com essa caixa; subdiretórios e arquivos que não terminam em `.ali` são ignorados. `GameInfo` guarda metadados e o caminho da capa dentro do pacote; nenhuma capa ou arquivo permanece aberto após o `scan()`. A opção Jogos do menu ainda não usa essa lista.
+
+O `GamePackage` recebe uma referência ao Storage e é mantido como membro da `GameLibrary`; ele não é usado diretamente pelo menu. Como o objeto mantém o índice completo em memória (~9 KB), qualquer uso direto também deve ter vida longa:
 
 ```cpp
 #include "game/package/game_package.hpp"
 
-class GameLibrary {
-public:
-    explicit GameLibrary(Storage& storage) : package_(storage) {}
+GamePackage package(console.storage()); // mantenha fora de loop() e de scan()
 
-    void open(const char* path)
-    {
-        if (!package_.open(path)) {
-            return;
-        }
-
-        const GameManifest& manifest = package_.manifest();
-        PackageFile entrypoint;
-        if (package_.openFile(manifest.entrypoint, entrypoint)) {
-            uint8_t buffer[64];
-            const size_t count = entrypoint.read(buffer, sizeof(buffer));
-        }
+if (package.open("/games/space.ali")) {
+    const GameManifest& manifest = package.manifest();
+    PackageFile entrypoint;
+    if (package.openFile(manifest.entrypoint, entrypoint)) {
+        uint8_t buffer[64];
+        const size_t count = entrypoint.read(buffer, sizeof(buffer));
     }
-
-private:
-    GamePackage package_; // ~9 KB: não crie GamePackage como variável local
-};
+}
 ```
 
-Use `PackageFile` enquanto consumir o conteúdo; a leitura é limitada ao tamanho declarado no índice e pode ser feita em blocos. EOF prematuro devolve os bytes lidos e fecha o arquivo. Um `PackageFile` aberto pode sobreviver a `GamePackage::close()`, mas o Storage precisa continuar vivo até o arquivo ser fechado ou destruído. Cada `PackageFile` ocupa um dos quatro slots de arquivo aberto do Storage, compartilhados com qualquer outro `StorageFile`. O manifesto e o entrypoint são dados, não são executados. O formato, limites, consumo de memória e campos do manifesto estão na [especificação `.ali`](./docs/game-package-format.md).
+Use `PackageFile` enquanto consumir o conteúdo; a leitura é limitada ao tamanho declarado no índice e pode ser feita em blocos. EOF prematuro devolve os bytes lidos e fecha o arquivo. Um `PackageFile` aberto pode sobreviver a `GamePackage::close()`, mas o Storage precisa continuar vivo até o arquivo ser fechado ou destruído. Cada `PackageFile` ocupa um dos quatro slots de arquivo aberto do Storage, compartilhados com qualquer `StorageFile` ou `StorageDirectory`. O manifesto e o entrypoint são dados, não são executados. O formato, limites, consumo de memória e campos do manifesto estão na [especificação `.ali`](./docs/game-package-format.md).
 
 ## Estrutura
 
@@ -153,7 +165,8 @@ firmware/
 ├── boot/       # Orquestra a inicialização
 ├── config/     # Configuração em memória carregada do LittleFS
 ├── game/
-│   └── package/ # Container .ali, manifesto e arquivos internos
+│   ├── library/  # Descoberta e metadados dos jogos em /games
+│   └── package/  # Container .ali, manifesto e arquivos internos
 ├── console/    # Composição do console
 ├── ui/
 │   └── screens/ # Telas da interface (menu principal)
@@ -166,13 +179,14 @@ data/
 └── config.ini
 docs/adr/       # Decisões de arquitetura
 docs/game-package-format.md
+docs/game-library.md
 ```
 
 Os includes do firmware são relativos a `firmware/`, por exemplo `#include "hal/input/input.hpp"`.
 
 ## Verificação
 
-Não há CI configurada. O build do firmware e os testes nativos do formato são:
+Não há CI configurada. O build do firmware e os testes nativos são:
 
 ```bash
 ~/.platformio/penv/bin/pio run
@@ -180,6 +194,6 @@ bash test/run-game-package-tests.sh
 python3 test/make_game_package_fixtures.py /path/to/fixture-output
 ```
 
-Os testes nativos validam o cabeçalho, os registros do índice, os caminhos e o manifesto. O gerador cria pacotes válidos e casos malformados para copiar ao cartão; eles não simulam a integração com o Storage. Para validar o cartão, use uma placa ESP32 e cartão FAT funcional com a pinagem definida em `data/config.ini`. Teste cartão ausente, pacotes gerados, arquivo interno inexistente e leitura incremental do `Assets/large.bin` (16 KiB, maior que o buffer de exemplo). O Wokwi deste projeto não cobre esses testes físicos; sem cartão, a inicialização opcional do Storage deve falhar sem impedir o restante do console.
+Os testes nativos validam o cabeçalho, os registros do índice, os caminhos e o manifesto do Game Package, além da descoberta, do filtro de extensão, dos pacotes inválidos e do limite da Game Library. O gerador cria pacotes válidos e casos malformados para copiar ao cartão; eles não simulam a integração com o Storage físico. Para validar o cartão, use uma placa ESP32 e cartão FAT funcional com a pinagem definida em `data/config.ini`. Teste cartão ausente, `/games` ausente ou vazio, pacotes gerados, arquivo interno inexistente, leitura incremental do `Assets/large.bin` (16 KiB, maior que o buffer de exemplo) e a listagem de vários jogos. O Wokwi deste projeto não cobre esses testes físicos; sem cartão, a inicialização opcional do Storage deve falhar sem impedir o restante do console.
 
-A matriz detalhada de integração física e o status de execução estão em [`docs/game-package-validation.md`](./docs/game-package-validation.md).
+As matrizes detalhadas de integração física e o status de execução estão em [`docs/game-package-validation.md`](./docs/game-package-validation.md) e [`docs/game-library.md`](./docs/game-library.md).

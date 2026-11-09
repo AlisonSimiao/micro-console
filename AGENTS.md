@@ -52,16 +52,16 @@ Warnings devem ser avaliados e, quando possível, corrigidos.
 
 O build atual leva aproximadamente 1 segundo.
 
-Há testes nativos para validação do cabeçalho, índice, caminhos e manifesto do Game Package:
+Há testes nativos para o Game Package e para a Game Library:
 
 ```bash
 bash test/run-game-package-tests.sh
 python3 test/make_game_package_fixtures.py /path/to/fixture-output
 ```
 
-Execute `pio run` antes para instalar as dependências. Esses testes não substituem a validação física: com uma placa ESP32 e cartão FAT, verifique cartão ausente, montagem, pacotes válidos/inválidos e leitura em blocos de um arquivo interno maior que o buffer. O circuito Wokwi atual não simula microSD; sem cartão, confirme no monitor serial que o Storage falha como opcional e que Display/Input seguem ativos.
+Execute `pio run` antes para instalar as dependências. Esses testes não substituem a validação física: com uma placa ESP32 e cartão FAT, verifique cartão ausente, montagem, pacotes válidos/inválidos, leitura em blocos de um arquivo interno maior que o buffer e a listagem de `/games`. O circuito Wokwi atual não simula microSD; sem cartão, confirme no monitor serial que o Storage falha como opcional, que a Game Library não bloqueia o boot e que Display/Input seguem ativos.
 
-A matriz de hardware detalhada e seu status estão em [docs/game-package-validation.md](./docs/game-package-validation.md).
+As matrizes de hardware detalhadas e seu status estão em [docs/game-package-validation.md](./docs/game-package-validation.md) e [docs/game-library.md](./docs/game-library.md).
 
 ### Simulação (Wokwi)
 
@@ -113,6 +113,9 @@ firmware/
 │   └── config.cpp
 │
 ├── game/
+│   ├── library/
+│   │   ├── game_library.hpp
+│   │   └── game_library.cpp
 │   └── package/
 │       ├── game_package.hpp
 │       ├── game_package.cpp
@@ -212,11 +215,11 @@ A direção das dependências deve permanecer previsível.
 
 Pode:
 
-- possuir `Config`, `Boot` e os HALs do console;
+- possuir `Config`, `Boot`, os HALs do console e a `GameLibrary`;
 - registrar os HALs no `Boot`;
 - iniciar o ciclo de vida do console;
 - orquestrar o `update()` dos componentes atualizáveis;
-- expor acesso interno aos módulos (`input()`, `display()`);
+- expor acesso interno aos módulos (`input()`, `display()`, `storage()`, `gameLibrary()`);
 - instanciar e conectar as telas da interface.
 
 Não deve:
@@ -228,7 +231,7 @@ Não deve:
 - executar gameplay;
 - virar uma máquina de estados de boot prematuramente.
 
-Os módulos são membros por valor e declarados na ordem de dependência (`Config` → HALs → `Boot` → telas), pois os HALs guardam uma referência ao `Config` e as telas guardam referências aos HALs.
+Os módulos são membros por valor e declarados na ordem de dependência (`Config` → HALs → `GameLibrary` → `Boot` → telas), pois os HALs guardam uma referência ao `Config`, a `GameLibrary` guarda referências ao `Storage` e as telas guardam referências aos HALs.
 
 ```cpp
 class Console {
@@ -240,11 +243,15 @@ public:
 
     Input& input();
     Display& display();
+    Storage& storage();
+    GameLibrary& gameLibrary();
 
 private:
     Config config_;
     Input input_;
     Display display_;
+    Storage storage_;
+    GameLibrary gameLibrary_;
     Boot boot_;
     HomeScreen homeScreen_;
 };
@@ -435,6 +442,7 @@ Storage:
   exists(path)
   isDirectory(path)
   open(path, StorageFile&)
+  openDirectory(path, StorageDirectory&)
   getInfo(path, StorageFileInfo&)
 
 StorageFile:
@@ -444,12 +452,21 @@ StorageFile:
   isOpen()
   close()
 
+StorageDirectory:
+  next(StorageEntry&)
+  isOpen()
+  close()
+
+StorageEntry:
+  name[128]
+  isDirectory
+
 StorageFileInfo:
   isDirectory
   size
 ```
 
-Os caminhos podem ser relativos à raiz do cartão ou começar com `/`; caminhos nulos, vazios ou com segmento `..` são recusados. `open()` abre apenas arquivos, não diretórios. Leitura de arquivo fechado retorna zero. A API não oferece escrita nesta etapa. `StorageFile` referencia o backend do `Storage` que o abriu e não deve sobreviver a ele.
+Os caminhos podem ser relativos à raiz do cartão ou começar com `/`; caminhos nulos, vazios ou com segmento `..` são recusados. `open()` abre apenas arquivos, não diretórios. `openDirectory()` abre apenas diretórios, não arquivos, e `next()` percorre somente os filhos imediatos, sem recursão. Entradas `.` e `..` e nomes que não cabem no buffer são ignorados. `StorageDirectory` ocupa um dos quatro slots de arquivo aberto, como `StorageFile`; feche-o ou deixe-o sair de escopo antes de abrir muitos arquivos simultâneos. Leitura de arquivo fechado retorna zero. A API não oferece escrita nesta etapa. `StorageFile` e `StorageDirectory` referenciam o backend do `Storage` que os abriu e não devem sobreviver a ele.
 
 O Storage é opcional no `Boot`: falha de montagem ou de declaração de pinos deixa `isMounted()` falso, mas não impede a inicialização dos módulos obrigatórios. O `Console` o registra depois de Display e Input e disponibiliza `storage()`. Todos os quatro sinais SPI são obrigatórios; Storage não suporta pino `-1`. A montagem SD é síncrona no boot e pode atrasar a exibição do menu quando o cartão está ausente. As decisões sobre módulos opcionais, prioridade de pinos e SPI dedicado estão em [ADR-0004](./docs/adr/0004-modulos-opcionais-e-storage-spi.md).
 
@@ -580,7 +597,65 @@ Não introduza dependências implícitas entre HALs sem necessidade.
 
 `GamePackage::open()` valida o cabeçalho, o índice, o manifesto e as referências ao entrypoint e à capa. `exists()` consulta o índice; `openFile()` retorna um `PackageFile` que limita as leituras ao conteúdo da entrada e fecha o arquivo SD ao ser destruído. EOF prematuro retorna os bytes já lidos e fecha o `PackageFile`. Um `PackageFile` aberto sobrevive a `GamePackage::close()`, mas não ao fim da vida do `Storage`. A abertura de uma entrada pode descartar bytes sequencialmente até seu offset, pois `StorageFile` não possui `seek`. O pacote não é executado nem carregado integralmente na RAM. Consulte [a especificação `.ali`](./docs/game-package-format.md) e a [ADR-0005](./docs/adr/0005-formato-do-game-package.md).
 
-O `GamePackage` mantém o índice e o manifesto em RAM (~9 KB) e por isso deve ser um objeto de longa duração (membro do `Console` ou da futura Game Library), nunca uma variável local em `loop()` ou em task com stack pequena; `open()` usa adicionalmente ~4 KB de stack. Cada `PackageFile` ocupa um dos quatro slots de arquivo aberto do `Storage`, compartilhados com qualquer outro `StorageFile`.
+O `GamePackage` mantém o índice e o manifesto em RAM (~9 KB) e por isso deve ser um objeto de longa duração (membro do `Console` ou da Game Library), nunca uma variável local em `loop()` ou em task com stack pequena; `open()` usa adicionalmente ~4 KB de stack. Cada `PackageFile` ocupa um dos quatro slots de arquivo aberto do `Storage`, compartilhados com qualquer outro `StorageFile`.
+
+---
+
+# Game Library
+
+`game/library/` descobre, valida e representa os jogos disponíveis no cartão. Ela **não executa jogos**, não interpreta JavaScript e não carrega assets na RAM. O contrato é:
+
+```text
+Storage
+   ↓
+GameLibrary
+   ├── GamePackage (uma instância de vida longa)
+   └── GameInfo[MAX_GAMES]
+```
+
+A descoberta V1 é intencionalmente simples:
+
+```text
+/games/
+    game1.ali
+    game2.ali
+    readme.txt   → ignorado
+    subdir/      → ignorado (sem recursão)
+```
+
+- O diretório oficial é `/games`, com essa caixa. `/Games` não é procurado.
+- Somente filhos imediatos são considerados. Subdiretórios não são percorridos.
+- A extensão aceita é exatamente `.ali`, sensível à caixa, igual ao `GamePackage`. `GAME.ALI` é ignorado.
+- A ordem da lista é a ordem de listagem do sistema de arquivos; não há ordenação, busca ou categorias nesta versão.
+
+API pública:
+
+```text
+GameLibrary:
+  scan()              → limpa e recarrega a lista
+  refresh()           → alias de scan()
+  count()
+  get(index)          → GameInfo* ou nullptr
+  isTruncated()       → havia mais pacotes do que MAX_GAMES
+
+GameInfo:
+  id[64]
+  name[64]
+  version[32]
+  author[64]
+  packagePath[128]    → caminho no cartão, ex.: /games/game.ali
+  coverPath[128]      → caminho da capa dentro do pacote
+```
+
+`scan()` retorna `false` apenas quando o Storage não está montado ou `/games` não pode ser aberto. Pacotes corrompidos, com manifesto inválido ou com entrypoint/capa ausente são ignorados sem interromper os demais. Pacotes válidos além de `MAX_GAMES` não entram na lista e fazem `isTruncated()` retornar `true`.
+
+A `GameLibrary` usa um único `GamePackage` como membro de vida longa, evitando colocar ~9 KB na stack a cada jogo. `GameInfo` guarda apenas metadados; nenhum `GamePackage` ou arquivo é mantido por jogo. Ao fim de `scan()`, todos os arquivos e o diretório estão fechados.
+
+`MAX_GAMES` é 16. `GameInfo` ocupa 480 bytes, então os metadados somam 7.680 bytes; com o `GamePackage` (~9,3 KB), `sizeof(GameLibrary)` fica em ~17 KB. O limite é verificado por `static_assert` e deve ser revisto junto com a documentação antes de aumentar. `scan()` usa ~4 KB adicionais de stack por causa de `GamePackage::open()`.
+
+O `Console` possui a `GameLibrary`, a expõe por `console.gameLibrary()` e chama `scan()` no boot somente quando o Storage montou. A tela de jogos ainda não consome a lista; `HomeScreen` continua sem ação para a opção Jogos.
+
+Detalhes, decisões e matriz de validação estão em [docs/game-library.md](./docs/game-library.md).
 
 ---
 
@@ -830,6 +905,7 @@ setup()
       ├── Boot::addModule(input)
       ├── Boot::addOptionalModule(storage)
       ├── Boot::begin()   → Config, validação de pinos e inicialização dos módulos
+      ├── GameLibrary::scan()  → somente se o Storage montou
       └── HomeScreen::begin()
 
 loop()
@@ -842,7 +918,7 @@ Em caso de falha, `Console::begin()` retorna `false` e o `main.cpp` interrompe a
 
 `Input::update()` precisa preceder `HomeScreen::update()`: a tela lê as bordas geradas na atualização corrente do Input.
 
-`Console::begin()` registra Display e Input como obrigatórios e Storage como opcional. O cartão é tentado após a configuração e a validação de pinos; uma falha de Storage não interrompe o menu. Consulte o módulo pelo `console.storage()` e verifique `isMounted()` antes de usar as operações de arquivo.
+`Console::begin()` registra Display e Input como obrigatórios e Storage como opcional. O cartão é tentado após a configuração e a validação de pinos; uma falha de Storage não interrompe o menu. Consulte o módulo pelo `console.storage()` e verifique `isMounted()` antes de usar as operações de arquivo. Quando o Storage monta, `Console::begin()` também chama `gameLibrary_.scan()`; uma falha de descoberta é apenas informada no Serial, nunca bloqueia o boot.
 
 O sistema ainda não possui o loop de atualização completo; Audio, System e Runtime ainda não participam dele.
 
@@ -932,8 +1008,11 @@ O estado de inicialização dos HALs usa `isInstantiated()` / `setInstantiated()
 Os itens abaixo descrevem o estado atual do projeto e não devem ser tratados automaticamente como decisões arquiteturais.
 
 - `Boot` não possui `update()`; `Console::update()` chama `Input::update()` e `HomeScreen::update()` diretamente.
-- Ainda não existem Audio, Game Library, System nem Runtime.
+- Ainda não existem Audio, System nem Runtime.
+- A Game Library existe e é populada no boot, mas nenhuma tela consome a lista.
+- A Game Library ordena os jogos na ordem do sistema de arquivos e não remove IDs duplicados.
 - O Game Package possui testes nativos para o formato, mas a integração de leitura deve ser validada com cartão microSD físico.
+- A Game Library possui testes nativos, mas a descoberta e a listagem de `/games` devem ser validadas com cartão microSD físico.
 - O Storage está implementado, mas a leitura ainda precisa de validação com cartão microSD físico. A ausência do cartão no Wokwi limita a validação local e não indica falha do Storage.
 - A pinagem padrão do Storage é provisória: usa GPIOs de strapping (2, 5 e 15) e deve ser validada na placa.
 - O menu principal possui três opções selecionáveis, mas nenhuma delas executa ação.
@@ -948,7 +1027,7 @@ Não introduza `-fpermissive` ou outros mecanismos apenas para mascarar problema
 
 Ao alterar o firmware:
 
-1. Preserve a separação entre Console, Boot, Config, UI, HAL, Game Package, System e Runtime.
+1. Preserve a separação entre Console, Boot, Config, UI, HAL, Game Package, Game Library, System e Runtime.
 2. Não coloque lógica de hardware dentro de `Boot`.
 3. Não coloque lógica de sistema dentro de HALs.
 4. Não exponha detalhes físicos do hardware para jogos.
@@ -986,15 +1065,17 @@ A evolução planejada do firmware é:
       ↓
 9. Game Package ✅ (formato V1 e leitor implementados; validação física pendente)
       ↓
-10. Audio ⏳
+10. Game Library ✅ (descoberta em `/games`; validação física pendente)
       ↓
-11. Game Library ⏳
+11. GamesScreen ⏳
       ↓
-12. System ⏳
+12. Audio ⏳
       ↓
-13. Game Runtime ⏳
+13. System ⏳
       ↓
-14. JavaScript games ⏳
+14. Game Runtime ⏳
+      ↓
+15. JavaScript games ⏳
 ```
 
 A implementação deve evoluir incrementalmente.

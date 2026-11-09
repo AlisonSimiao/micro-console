@@ -56,6 +56,13 @@ g++ "${common_flags[@]}" \
     "${package_sources[@]}" \
     -o "$temporary_directory/fixture-tests"
 
+g++ "${common_flags[@]}" \
+    test/game_library_test.cpp \
+    firmware/game/library/game_library.cpp \
+    "${package_sources[@]}" \
+    -o "$temporary_directory/game-library-tests"
+
 "$temporary_directory/format-tests"
 "$temporary_directory/reader-tests"
 "$temporary_directory/fixture-tests" "$fixture_directory"
+"$temporary_directory/game-library-tests"
