@@ -76,17 +76,19 @@ bool GameLibrary::scan()
             continue;
         }
 
-        if (count_ == MAX_GAMES) {
-            truncated_ = true;
-            break;
-        }
-
         char packagePath[128];
         if (!buildPackagePath(entry.name, packagePath)) {
             continue;
         }
 
         if (!package_.open(packagePath)) {
+            continue;
+        }
+
+        // O pacote só é contado como excedente depois de validado: um `.ali`
+        // inválido depois de MAX_GAMES jogos não caracteriza truncamento.
+        if (count_ >= MAX_GAMES) {
+            truncated_ = true;
             continue;
         }
 

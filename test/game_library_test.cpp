@@ -54,6 +54,24 @@ const GameInfo* find(const GameLibrary& library, const std::string& id)
     return nullptr;
 }
 
+void addValidGames(Storage& storage, size_t count)
+{
+    for (size_t i = 0; i < count; ++i) {
+        const std::string id = "game" + std::to_string(i);
+        storage.addFile(
+            "/games/" + id + ".ali",
+            makeGame(id, "Game " + std::to_string(i)));
+    }
+}
+
+void addInvalidGames(Storage& storage, size_t count)
+{
+    for (size_t i = 0; i < count; ++i) {
+        const std::string id = "zz-broken" + std::to_string(i);
+        storage.addFile("/games/" + id + ".ali", byteVector("not a package"));
+    }
+}
+
 void testStorageNotMounted()
 {
     Storage storage;
@@ -151,18 +169,88 @@ void testLimit()
 {
     Storage storage;
     storage.addDirectory(GAMES_DIRECTORY);
-    for (size_t i = 0; i < GameLibrary::MAX_GAMES + 2; ++i) {
-        const std::string id = "game" + std::to_string(i);
-        storage.addFile(
-            "/games/" + id + ".ali",
-            makeGame(id, "Game " + std::to_string(i)));
-    }
+    addValidGames(storage, GameLibrary::MAX_GAMES + 2);
 
     GameLibrary library(storage);
     assert(library.scan());
     assert(library.count() == GameLibrary::MAX_GAMES);
     assert(library.isTruncated());
     assert(library.get(GameLibrary::MAX_GAMES) == nullptr);
+    assert(storage.openFileCount() == 0);
+}
+
+void testExactlyMaxGamesIsNotTruncated()
+{
+    Storage storage;
+    storage.addDirectory(GAMES_DIRECTORY);
+    addValidGames(storage, GameLibrary::MAX_GAMES);
+
+    GameLibrary library(storage);
+    assert(library.scan());
+    assert(library.count() == GameLibrary::MAX_GAMES);
+    assert(!library.isTruncated());
+    assert(storage.openFileCount() == 0);
+}
+
+void testInvalidPackageAfterMaxGamesIsNotTruncated()
+{
+    Storage storage;
+    storage.addDirectory(GAMES_DIRECTORY);
+    addValidGames(storage, GameLibrary::MAX_GAMES);
+    addInvalidGames(storage, 1);
+
+    GameLibrary library(storage);
+    assert(library.scan());
+    assert(library.count() == GameLibrary::MAX_GAMES);
+    assert(!library.isTruncated());
+    assert(storage.openFileCount() == 0);
+}
+
+void testValidPackageAfterMaxGamesIsTruncated()
+{
+    Storage storage;
+    storage.addDirectory(GAMES_DIRECTORY);
+    addValidGames(storage, GameLibrary::MAX_GAMES);
+    storage.addFile(
+        "/games/zz-extra.ali",
+        makeGame("zz-extra", "Extra"));
+
+    GameLibrary library(storage);
+    assert(library.scan());
+    assert(library.count() == GameLibrary::MAX_GAMES);
+    assert(library.isTruncated());
+    assert(find(library, "zz-extra") == nullptr);
+    assert(storage.openFileCount() == 0);
+}
+
+void testSeveralInvalidPackagesAfterMaxGamesAreNotTruncated()
+{
+    Storage storage;
+    storage.addDirectory(GAMES_DIRECTORY);
+    addValidGames(storage, GameLibrary::MAX_GAMES);
+    addInvalidGames(storage, 10);
+
+    GameLibrary library(storage);
+    assert(library.scan());
+    assert(library.count() == GameLibrary::MAX_GAMES);
+    assert(!library.isTruncated());
+    assert(storage.openFileCount() == 0);
+}
+
+void testValidPackageAfterInvalidPackageBeyondMaxGamesIsTruncated()
+{
+    Storage storage;
+    storage.addDirectory(GAMES_DIRECTORY);
+    addValidGames(storage, GameLibrary::MAX_GAMES);
+    addInvalidGames(storage, 1);
+    storage.addFile(
+        "/games/zz-extra.ali",
+        makeGame("zz-extra", "Extra"));
+
+    GameLibrary library(storage);
+    assert(library.scan());
+    assert(library.count() == GameLibrary::MAX_GAMES);
+    assert(library.isTruncated());
     assert(storage.openFileCount() == 0);
 }
 
@@ -206,6 +294,11 @@ int main()
     testDiscoveryAndFilter();
     testInvalidPackagesAreIgnored();
     testLimit();
+    testExactlyMaxGamesIsNotTruncated();
+    testInvalidPackageAfterMaxGamesIsNotTruncated();
+    testValidPackageAfterMaxGamesIsTruncated();
+    testSeveralInvalidPackagesAfterMaxGamesAreNotTruncated();
+    testValidPackageAfterInvalidPackageBeyondMaxGamesIsTruncated();
     testRefreshClearsPreviousResults();
     testDirectoryNameIsCaseSensitive();
     std::cout << "Game Library tests passed\n";

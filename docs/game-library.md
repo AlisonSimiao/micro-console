@@ -186,7 +186,17 @@ Pacotes inválidos não geram entrada, quarentena ou reparo. Não há cache pers
 
 ### Limite
 
-`MAX_GAMES` é **16**. Os primeiros 16 pacotes válidos, na ordem do diretório, entram na lista. Ao encontrar mais um arquivo `.ali` depois disso, o `scan()` para de percorrer e `isTruncated()` retorna `true`. Os excedentes são ignorados.
+`MAX_GAMES` é **16**. Os primeiros 16 pacotes válidos, na ordem do diretório, entram na lista; os excedentes não são armazenados.
+
+O `scan()` continua percorrendo o diretório depois de atingir `MAX_GAMES`, porque `isTruncated()` só pode responder se ainda existe **outro pacote válido**, e não apenas outro arquivo. Um `.ali` inválido depois dos 16 primeiros não caracteriza truncamento:
+
+```text
+16 válidos + 1 inválido   → isTruncated() == false
+16 válidos + 1 válido     → isTruncated() == true
+16 válidos + 10 inválidos → isTruncated() == false
+```
+
+Por isso o `break` ao atingir o limite não deve ser reintroduzido: ele responde "existe mais um `.ali`?" em vez de "existe mais um jogo válido?".
 
 ### Arquivos abertos
 
@@ -243,10 +253,15 @@ Cobertura atual:
 - zero, um e vários jogos;
 - `.ali` aceito; `.ALI`, `.txt`, `.zip` e subdiretórios ignorados;
 - pacote corrompido, manifesto inválido e entrypoint ausente ignorados;
-- limite `MAX_GAMES` e `MAX_GAMES + 2` com `isTruncated()`;
+- limite `MAX_GAMES` com e sem excedentes válidos/inválidos, verificando `isTruncated()`;
 - `refresh()` limpando resultados anteriores;
 - `storage.openFileCount() == 0` ao final de cada `scan()`;
 - orçamento de memória por `static_assert`.
+
+### Limites de `GameInfo`
+
+`GameInfo` é preenchido com `copyText()`, que trunca silenciosamente valores maiores que o campo. Hoje `GameManifest` e `GameInfo` têm limites independentes, então um `id` de manifesto com mais de 63 bytes vira um ID truncado na biblioteca. O truncamento é seguro contra overflow, mas ainda não há contrato entre os dois tipos. Alinhar os limites (especialmente `id`) é uma mudança separada, com decisão explícita entre rejeitar o manifesto ou ampliar `GameInfo`.
+
 
 ## Matriz física
 
@@ -262,6 +277,7 @@ Cobertura atual:
 | GL-06 | `readme.txt` e `.zip` em `/games` | ignorados |
 | GL-07 | Subdiretório com `.ali` | ignorado, sem recursão |
 | GL-08 | `MAX_GAMES + 1` pacotes válidos | 16 entradas e `isTruncated()` verdadeiro |
+| GL-08b | `MAX_GAMES` válidos + `.ali` inválidos | 16 entradas e `isTruncated()` falso |
 | GL-09 | Nome `GAME.ALI` | ignorado pela extensão sensível à caixa |
 | GL-10 | Diretório `/Games` | não encontrado |
 | GL-11 | Após o boot com cartão | Serial informa a contagem; UI segue responsiva |
