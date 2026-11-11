@@ -17,6 +17,128 @@ Firmware para um console baseado em ESP32 DevKit (`esp32dev`), desenvolvido com 
 A tela que consome a Game Library, o áudio, o sistema e o runtime JavaScript ainda não estão implementados.
 O formato `.ali` V1 está descrito em [`docs/game-package-format.md`](./docs/game-package-format.md), e sua decisão arquitetural em [`ADR-0005`](./docs/adr/0005-formato-do-game-package.md). A Game Library está documentada em [`docs/game-library.md`](./docs/game-library.md).
 
+## Arquitetura
+
+O firmware é organizado em camadas. `Console` é o composition root: possui e conecta os componentes, enquanto `Boot` coordena a inicialização. Os HALs abstraem o hardware; `GameLibrary` descobre pacotes `.ali` por meio do `Storage`. A tela inicial ainda não consome a biblioteca de jogos.
+
+### Visão geral
+
+```mermaid
+flowchart TB
+    subgraph APP["Aplicação atual"]
+        Console["Console<br/>Composition Root"]
+        Boot["Boot"]
+        Config["Config"]
+        HomeScreen["HomeScreen<br/>Jogos · Configuracoes · Sobre"]
+    end
+
+    subgraph HAL["HAL"]
+        Display["Display"]
+        Input["Input"]
+        Storage["Storage"]
+    end
+
+    subgraph GAMES["Gerenciamento de jogos atual"]
+        Library["GameLibrary<br/>Descoberta e metadados"]
+        Package["GamePackage<br/>Leitura e validacao .ali"]
+    end
+
+    subgraph FUTURE["Execucao de jogos — planejada"]
+        Runtime["GameRuntime"]
+        Engine["JavaScript Engine"]
+        SDK["Game SDK"]
+        System["System"]
+    end
+
+    Console --> Boot
+    Console --> Config
+    Console --> HomeScreen
+    Console --> Display
+    Console --> Input
+    Console --> Storage
+    Console --> Library
+
+    Boot --> Config
+    Boot --> Display
+    Boot --> Input
+    Boot --> Storage
+    HomeScreen --> Display
+    HomeScreen --> Input
+    Library --> Package
+    Library --> Storage
+    Package --> Storage
+
+    Console -.-> Runtime
+    Runtime -.-> System
+    Runtime -.-> Package
+    Runtime -.-> Engine
+    Engine -.-> SDK
+```
+
+As setas sólidas representam relações implementadas; as tracejadas indicam partes planejadas. A `GameLibrary` é preenchida no boot quando o cartão monta, mas a opção Jogos do menu ainda não abre nem exibe essa lista.
+
+### Responsabilidades
+
+| Componente | Responsabilidade | Estado |
+|---|---|---|
+| `Console` | Compõe os componentes e coordena o ciclo de atualização. | Implementado |
+| `Boot` | Carrega a configuração, valida declarações de pinos e inicializa os módulos. | Implementado |
+| `Config` | Carrega e fornece as configurações persistentes do console. | Implementado |
+| `HomeScreen` | Exibe o menu e permite navegar entre as opções. | Implementado |
+| HAL (`Display`, `Input`, `Storage`) | Abstrai o acesso ao display, aos controles e ao cartão microSD. | Implementado |
+| `GameLibrary` | Descobre pacotes válidos em `/games` e mantém seus metadados. | Implementado |
+| `GamePackage` | Lê e valida o formato de pacote `.ali`. | Implementado |
+| `System` | Agrupa serviços de nível superior ao hardware. | Planejado |
+| `GameRuntime` | Gerencia o ciclo de vida e a execução dos jogos. | Planejado |
+| JavaScript Engine | Interpreta o código JavaScript dos jogos. | Planejado |
+| Game SDK | Oferece aos jogos uma API para usar os recursos do console. | Planejado |
+
+### Fluxo atual e fluxo planejado
+
+No firmware atual, o boot inicializa os módulos; depois, o `Console` tenta descobrir os jogos se o `Storage` estiver montado. No loop, o input é atualizado antes da tela inicial:
+
+```mermaid
+flowchart TD
+    A["Console::begin()"] --> B["Boot: Config e HALs"]
+    B --> C{"Storage montado?"}
+    C -->|Sim| D["GameLibrary: scan /games"]
+    C -->|Nao| E["Continuar sem GameLibrary"]
+    D --> F["HomeScreen"]
+    E --> F
+    F --> G["Loop: Input::update()"]
+    G --> H["HomeScreen::update()"]
+    H --> G
+```
+
+O fluxo futuro prevê seleção e execução de um jogo; essas etapas ainda não estão implementadas:
+
+```mermaid
+flowchart LR
+    A["HomeScreen"] -.-> B["Selecao do jogo"]
+    B -.-> C["GameRuntime"]
+    C -.-> D["JavaScript Engine"]
+    D -.-> E["Game SDK"]
+    E -.-> F["Jogo em execucao"]
+    F -.-> A
+```
+
+### Estrutura de um pacote `.ali`
+
+Um `.ali` é um container binário sequencial, não um diretório compactado. O índice referencia os arquivos internos; `manifest.json` descreve o jogo, seu entrypoint e sua capa.
+
+```text
+MeuJogo.ali
+├── Cabecalho (ALIP, versao e tamanho do indice)
+├── Indice (caminhos, offsets e tamanhos)
+├── manifest.json
+└── Conteudos indexados
+    ├── Codes/main.js
+    ├── Assets/...
+    └── Capa.bin
+```
+
+O formato e a validação já estão implementados. A leitura fornece os arquivos em blocos; a execução do entrypoint JavaScript continua planejada.
+
 ## Hardware padrão
 
 | Componente | Sinal | GPIO |
