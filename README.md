@@ -14,8 +14,9 @@ Firmware para um console baseado em ESP32 DevKit (`esp32dev`), desenvolvido com 
 - Menu principal com as opções Jogos, Configuracoes e Sobre, com seleção circular por UP/DOWN.
 - Simulação do circuito no Wokwi.
 
-A tela que consome a Game Library, o áudio, o sistema e o runtime JavaScript ainda não estão implementados.
+A tela que consome a Game Library, o áudio e o runtime JavaScript ainda não estão implementados.
 O formato `.ali` V1 está descrito em [`docs/game-package-format.md`](./docs/game-package-format.md), e sua decisão arquitetural em [`ADR-0005`](./docs/adr/0005-formato-do-game-package.md). A Game Library está documentada em [`docs/game-library.md`](./docs/game-library.md).
+O módulo `System` oferece consultas pontuais de uptime e heap livre; detalhes em [`docs/system.md`](./docs/system.md).
 
 ## Arquitetura
 
@@ -29,6 +30,7 @@ flowchart TB
         Console["Console<br/>Composition Root"]
         Boot["Boot"]
         Config["Config"]
+        System["System<br/>Uptime · heap livre"]
         HomeScreen["HomeScreen<br/>Jogos · Configuracoes · Sobre"]
     end
 
@@ -47,11 +49,11 @@ flowchart TB
         Runtime["GameRuntime"]
         Engine["JavaScript Engine"]
         SDK["Game SDK"]
-        System["System"]
     end
 
     Console --> Boot
     Console --> Config
+    Console --> System
     Console --> HomeScreen
     Console --> Display
     Console --> Input
@@ -73,6 +75,7 @@ flowchart TB
     Runtime -.-> Package
     Runtime -.-> Engine
     Engine -.-> SDK
+    Runtime -.-> System
 ```
 
 As setas sólidas representam relações implementadas; as tracejadas indicam partes planejadas. A `GameLibrary` é preenchida no boot quando o cartão monta, mas a opção Jogos do menu ainda não abre nem exibe essa lista.
@@ -88,7 +91,7 @@ As setas sólidas representam relações implementadas; as tracejadas indicam pa
 | HAL (`Display`, `Input`, `Storage`) | Abstrai o acesso ao display, aos controles e ao cartão microSD. | Implementado |
 | `GameLibrary` | Descobre pacotes válidos em `/games` e mantém seus metadados. | Implementado |
 | `GamePackage` | Lê e valida o formato de pacote `.ali`. | Implementado |
-| `System` | Agrupa serviços de nível superior ao hardware. | Planejado |
+| `System` | Consulta uptime e heap livre da plataforma. | Implementado |
 | `GameRuntime` | Gerencia o ciclo de vida e a execução dos jogos. | Planejado |
 | JavaScript Engine | Interpreta o código JavaScript dos jogos. | Planejado |
 | Game SDK | Oferece aos jogos uma API para usar os recursos do console. | Planejado |

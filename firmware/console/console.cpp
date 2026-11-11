@@ -8,6 +8,7 @@ Console::Console()
       display_(config_),
       storage_(config_),
       gameLibrary_(storage_),
+      system_(),
       boot_(config_),
       homeScreen_(display_, input_)
 {
@@ -80,4 +81,9 @@ Storage& Console::storage()
 GameLibrary& Console::gameLibrary()
 {
     return gameLibrary_;
+}
+
+System& Console::system()
+{
+    return system_;
 }

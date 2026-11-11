@@ -6,6 +6,7 @@
 #include "hal/display/display.hpp"
 #include "hal/input/input.hpp"
 #include "hal/storage/storage.hpp"
+#include "system/system.hpp"
 #include "ui/screens/home_screen.hpp"
 
 class Console {
@@ -19,6 +20,7 @@ public:
     Display& display();
     Storage& storage();
     GameLibrary& gameLibrary();
+    System& system();
 
 private:
     Config config_;
@@ -26,6 +28,7 @@ private:
     Display display_;
     Storage storage_;
     GameLibrary gameLibrary_;
+    System system_;
     Boot boot_;
     HomeScreen homeScreen_;
 };
