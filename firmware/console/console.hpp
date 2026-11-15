@@ -7,6 +7,7 @@
 #include "hal/input/input.hpp"
 #include "hal/storage/storage.hpp"
 #include "system/system.hpp"
+#include "ui/screens/games_screen.hpp"
 #include "ui/screens/home_screen.hpp"
 
 class Console {
@@ -31,4 +32,5 @@ private:
     System system_;
     Boot boot_;
     HomeScreen homeScreen_;
+    GamesScreen gamesScreen_;
 };

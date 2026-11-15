@@ -11,6 +11,7 @@ public:
 
     void begin();
     void update();
+    bool isSelected(uint8_t index) const;
 
 private:
     static constexpr uint8_t OPTION_COUNT = 3;

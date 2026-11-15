@@ -155,6 +155,11 @@ void HomeScreen::update()
     drawOption(display_, layout, selectedIndex_, OPTIONS[selectedIndex_], true);
 }
 
+bool HomeScreen::isSelected(uint8_t index) const
+{
+    return index < OPTION_COUNT && selectedIndex_ == index;
+}
+
 void HomeScreen::draw()
 {
     static_assert(MENU_OPTION_COUNT == OPTION_COUNT,

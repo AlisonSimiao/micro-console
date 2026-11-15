@@ -10,7 +10,8 @@ Console::Console()
       gameLibrary_(storage_),
       system_(),
       boot_(config_),
-      homeScreen_(display_, input_)
+      homeScreen_(display_, input_),
+      gamesScreen_(display_, input_, gameLibrary_)
 {
 }
 
@@ -60,7 +61,24 @@ bool Console::begin()
 void Console::update()
 {
     input_.update();
+
+    if (gamesScreen_.isVisible()) {
+        gamesScreen_.update();
+
+        // HomeScreen::update() only redraws when the selection changes, so a full
+        // begin() is required when the list closes over the Home screen.
+        if (!gamesScreen_.isVisible()) {
+            homeScreen_.begin();
+        }
+
+        return;
+    }
+
     homeScreen_.update();
+
+    if (homeScreen_.isSelected(0) && input_.wasPressed("A")) {
+        gamesScreen_.begin();
+    }
 }
 
 Input& Console::input()
