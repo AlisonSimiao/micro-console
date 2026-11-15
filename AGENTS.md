@@ -52,10 +52,12 @@ Warnings devem ser avaliados e, quando possível, corrigidos.
 
 O build atual leva aproximadamente 1 segundo.
 
-Há testes nativos para o Game Package e para a Game Library:
+Há testes nativos para o Game Package, a Game Library, o System e o Game Runtime:
 
 ```bash
 bash test/run-game-package-tests.sh
+bash test/run-system-tests.sh
+bash test/run-game-runtime-tests.sh
 python3 test/make_game_package_fixtures.py /path/to/fixture-output
 ```
 
@@ -150,7 +152,7 @@ firmware/
     └── system.cpp
 ```
 
-`game/runtime/` está especificado em [docs/game-runtime.md](./docs/game-runtime.md), mas ainda não implementado. O mesmo vale para `hal/audio/`.
+`game/runtime/` contém o lifecycle descrito em [docs/game-runtime.md](./docs/game-runtime.md); JavaScript Engine e Game SDK ainda não existem. O mesmo vale para `hal/audio/`.
 
 ### Includes
 
@@ -218,7 +220,7 @@ A direção das dependências deve permanecer previsível.
 
 Pode:
 
-- possuir `Config`, `Boot`, os HALs do console, a `GameLibrary`, o `System` e (quando implementado) o `GameRuntime`;
+- possuir `Config`, `Boot`, os HALs do console, a `GameLibrary`, o `GameRuntime` e o `System`;
 - registrar os HALs no `Boot`;
 - iniciar o ciclo de vida do console;
 - orquestrar o `update()` dos componentes atualizáveis;
@@ -258,7 +260,7 @@ private:
     Display display_;
     Storage storage_;
     GameLibrary gameLibrary_;
-    GameRuntime gameRuntime_;   // planejado: sessão de jogo
+    GameRuntime gameRuntime_;   // sessão de jogo em execução
     System system_;
     Boot boot_;
     HomeScreen homeScreen_;
@@ -276,7 +278,7 @@ As telas recebem referências aos HALs de que precisam (por exemplo, `Display` e
 
 `HomeScreen` (`ui/screens/`) é a tela inicial do console. Ela apresenta o menu principal com as opções Jogos, Configuracoes e Sobre (sem acentos, pois a fonte embutida do Display não os suporta), mantém o índice selecionado e trata a navegação circular com UP/DOWN. A opção Jogos abre a `GamesScreen`; as demais ainda não executam ação.
 
-`GamesScreen` lista os jogos da `GameLibrary`, com seleção circular por UP/DOWN e no máximo cinco linhas visíveis, sem rolagem além da janela atual. Ela desenha pela API do `Display` e lê bordas do `Input`, mas não abre o `.ali`, não executa jogo e não decide a transição para o Runtime. Na versão atual `A` e `B` apenas fecham a lista; o contrato do `GameRuntime` prevê `A` para iniciar o jogo selecionado e `B` para voltar, com a decisão no `Console` ([docs/game-runtime.md](./docs/game-runtime.md)).
+`GamesScreen` lista os jogos da `GameLibrary`, com seleção circular por UP/DOWN e no máximo cinco linhas visíveis, sem rolagem além da janela atual. Ela desenha pela API do `Display`, lê bordas do `Input`, expõe o jogo sob o cursor por `selected()` e não abre o `.ali`, não executa jogo e não decide a transição para o Runtime. `A` e `B` pertencem ao `Console`, que inicia o jogo selecionado e fecha a lista ([docs/game-runtime.md](./docs/game-runtime.md)).
 
 #### Boot
 
@@ -664,7 +666,7 @@ A `GameLibrary` usa um único `GamePackage` como membro de vida longa, evitando 
 
 `MAX_GAMES` é 16. `GameInfo` ocupa 480 bytes, então os metadados somam 7.680 bytes; com o `GamePackage` (~9,3 KB), `sizeof(GameLibrary)` fica em ~17 KB. O limite é verificado por `static_assert` e deve ser revisto junto com a documentação antes de aumentar. `scan()` usa ~4 KB adicionais de stack por causa de `GamePackage::open()`.
 
-O `Console` possui a `GameLibrary`, a expõe por `console.gameLibrary()` e chama `scan()` no boot somente quando o Storage montou. A `GamesScreen` consome a lista; o lançamento do jogo depende do `GameRuntime`, ainda não implementado.
+O `Console` possui a `GameLibrary`, a expõe por `console.gameLibrary()` e chama `scan()` no boot somente quando o Storage montou. A `GamesScreen` consome a lista e o `Console` usa `GameRuntime::launch()` para abrir o pacote do jogo selecionado; ainda não há gameplay.
 
 Detalhes, decisões e matriz de validação estão em [docs/game-library.md](./docs/game-library.md).
 
@@ -710,7 +712,7 @@ A coordenação do ciclo de vida de jogos **não** pertence ao `System`: ela é 
 
 # Game Runtime
 
-`game/runtime/` controla a execução de **um jogo por vez**. O contrato está fechado em [docs/game-runtime.md](./docs/game-runtime.md) e a decisão de posse de recursos na [ADR-0006](./docs/adr/0006-game-runtime-session-and-resource-ownership.md); **o código ainda não existe**.
+`game/runtime/` controla a execução de **um jogo por vez**. O contrato está fechado em [docs/game-runtime.md](./docs/game-runtime.md) e a decisão de posse de recursos na [ADR-0006](./docs/adr/0006-game-runtime-session-and-resource-ownership.md); o lifecycle está implementado em `game_runtime.hpp/.cpp`.
 
 O Game Package apenas valida e fornece arquivos. Carregar ou executar o entrypoint pertence ao Runtime, que hoje está limitado ao lifecycle: nenhum JavaScript é interpretado.
 
@@ -950,7 +952,9 @@ setup()
 loop()
  └── Console::update()
       ├── Input::update()
-      ├── GamesScreen visível? → GamesScreen::update()
+      ├── GameRuntime em execução? → GameRuntime::update() e saída provisória (B)
+      ├── GameRuntime em Failed? → logar, parar e voltar à Home
+      ├── GamesScreen visível? → A inicia o jogo, B fecha, senão GamesScreen::update()
       └── senão → HomeScreen::update()
 ```
 
@@ -960,7 +964,7 @@ Em caso de falha, `Console::begin()` retorna `false` e o `main.cpp` interrompe a
 
 `Console::begin()` registra Display e Input como obrigatórios e Storage como opcional. O cartão é tentado após a configuração e a validação de pinos; uma falha de Storage não interrompe o menu. Consulte o módulo pelo `console.storage()` e verifique `isMounted()` antes de usar as operações de arquivo. Quando o Storage monta, `Console::begin()` também chama `gameLibrary_.scan()`; uma falha de descoberta é apenas informada no Serial, nunca bloqueia o boot.
 
-O sistema ainda não possui o loop de atualização completo; Audio e GameRuntime ainda não participam dele, e `System` não tem `update()` por não manter estado.
+O sistema ainda não possui o loop de atualização completo; Audio ainda não participa dele, e `System` não tem `update()` por não manter estado. O `GameRuntime` participa apenas do lifecycle: sem engine, `update()` só avança a contagem de frames, e `A` na `GamesScreen` abre o pacote e mostra um aviso textual temporário no `Console`.
 
 A direção planejada para o MVP é um loop cooperativo, com execução de jogo exclusiva:
 
@@ -1055,9 +1059,9 @@ O estado de inicialização dos HALs usa `isInstantiated()` / `setInstantiated()
 
 Os itens abaixo descrevem o estado atual do projeto e não devem ser tratados automaticamente como decisões arquiteturais.
 
-- `Boot` não possui `update()`; `Console::update()` chama `Input::update()`, a tela visível e (quando implementado) o `GameRuntime` diretamente.
-- Ainda não existem Audio nem `GameRuntime`. O contrato do Runtime está fechado em [docs/game-runtime.md](./docs/game-runtime.md); a implementação está pendente.
-- A Game Library é populada no boot e a `GamesScreen` consome a lista, mas iniciar um jogo ainda não está implementado.
+- `Boot` não possui `update()`; `Console::update()` chama `Input::update()`, o `GameRuntime` quando em execução, a tela visível e trata as transições entre telas diretamente.
+- Ainda não existe Audio. O `GameRuntime` implementa somente o lifecycle: não interpreta JavaScript e não executa gameplay; `update()` apenas incrementa `frameCount()`.
+- A Game Library é populada no boot e a `GamesScreen` consome a lista; `A` abre o pacote do jogo, mas ainda não há execução.
 - A Game Library ordena os jogos na ordem do sistema de arquivos e não remove IDs duplicados.
 - O Game Package possui testes nativos para o formato, mas a integração de leitura deve ser validada com cartão microSD físico.
 - A Game Library possui testes nativos, mas a descoberta e a listagem de `/games` devem ser validadas com cartão microSD físico.
@@ -1115,13 +1119,13 @@ A evolução planejada do firmware é:
       ↓
 10. Game Library ✅ (descoberta em `/games`; validação física pendente)
       ↓
-11. GamesScreen ✅ (lista os jogos; iniciar jogo pendente)
+11. GamesScreen ✅ (lista os jogos e inicia o pacote selecionado)
       ↓
 12. System ✅ (uptime e heap livre)
       ↓
 13. Audio ⏳
       ↓
-14. GameRuntime ⏳ (contrato fechado; implementação pendente)
+14. GameRuntime ✅ (lifecycle; engine pendente)
       ↓
 15. JavaScript Engine ⏳
       ↓

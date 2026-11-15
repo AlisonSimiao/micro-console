@@ -148,7 +148,7 @@ HomeScreen / GamesScreen
 
 `Console::begin()` chama `scan()` depois do `Boot` e somente quando o Storage montou. Uma falha de descoberta é informada no Serial, mas não bloqueia o boot. A lista é acessível por `console.gameLibrary()`.
 
-A `GamesScreen` consome a lista, mas não inicia jogos: a execução pertence ao `GameRuntime`, cujo contrato está em [game-runtime.md](./game-runtime.md).
+A `GamesScreen` consome a lista e expõe o jogo sob o cursor; `A` pertence ao `Console`, que chama `GameRuntime::launch()` para abrir o pacote. O contrato está em [game-runtime.md](./game-runtime.md).
 
 ## Comportamento de `scan()`
 

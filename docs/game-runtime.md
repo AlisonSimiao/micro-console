@@ -26,6 +26,10 @@ interpretado.
 Decisões de posse de recursos e de sessão única estão na
 [ADR-0006](./adr/0006-game-runtime-session-and-resource-ownership.md).
 
+**Status:** o lifecycle está implementado em `firmware/game/runtime/`, com testes
+nativos em `test/game_runtime_test.cpp`. A matriz de validação física continua
+pendente.
+
 ## Responsabilidade
 
 ```text

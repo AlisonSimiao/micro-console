@@ -12,17 +12,18 @@ Firmware para um console baseado em ESP32 DevKit (`esp32dev`), desenvolvido com 
 - Game Package para validar pacotes `.ali`, ler o manifesto e abrir arquivos internos incrementalmente.
 - Game Library para descobrir e representar os jogos válidos em `/games`, sem executá-los.
 - Menu principal com as opções Jogos, Configuracoes e Sobre, com seleção circular por UP/DOWN.
-- Lista de jogos que percorre a Game Library; iniciar um jogo ainda não está implementado.
+- Lista de jogos que percorre a Game Library e inicia o pacote selecionado; ainda não há execução de gameplay.
+- `GameRuntime` com lifecycle de uma sessão por vez (launch, update, stop).
 - `System` com consultas pontuais de uptime e heap livre.
 - Simulação do circuito no Wokwi.
 
-O áudio, o runtime de jogos, a JavaScript Engine e o Game SDK ainda não estão implementados. O contrato do `GameRuntime` está especificado em [`docs/game-runtime.md`](./docs/game-runtime.md), e a decisão de posse de recursos em [`ADR-0006`](./docs/adr/0006-game-runtime-session-and-resource-ownership.md).
+O áudio, a JavaScript Engine e o Game SDK ainda não estão implementados. O `GameRuntime` cobre apenas o lifecycle descrito em [`docs/game-runtime.md`](./docs/game-runtime.md), e a decisão de posse de recursos está em [`ADR-0006`](./docs/adr/0006-game-runtime-session-and-resource-ownership.md).
 O formato `.ali` V1 está descrito em [`docs/game-package-format.md`](./docs/game-package-format.md), e sua decisão arquitetural em [`ADR-0005`](./docs/adr/0005-formato-do-game-package.md). A Game Library está documentada em [`docs/game-library.md`](./docs/game-library.md).
 O módulo `System` oferece consultas pontuais de uptime e heap livre; detalhes em [`docs/system.md`](./docs/system.md).
 
 ## Arquitetura
 
-O firmware é organizado em camadas. `Console` é o composition root: possui e conecta os componentes, enquanto `Boot` coordena a inicialização. Os HALs abstraem o hardware; `GameLibrary` descobre pacotes `.ali` por meio do `Storage`; `GamesScreen` exibe essa lista e o `Console` decide o que fazer com a seleção. A execução de jogos está especificada, mas não implementada.
+O firmware é organizado em camadas. `Console` é o composition root: possui e conecta os componentes, enquanto `Boot` coordena a inicialização. Os HALs abstraem o hardware; `GameLibrary` descobre pacotes `.ali` por meio do `Storage`; `GamesScreen` exibe essa lista e o `Console` decide o que fazer com a seleção. O `GameRuntime` abre e mantém a sessão de um jogo por vez, ainda sem engine JavaScript.
 
 ### Visão geral
 
@@ -99,7 +100,7 @@ As setas sólidas representam relações implementadas; as tracejadas indicam pa
 | `GameLibrary` | Descobre pacotes válidos em `/games` e mantém seus metadados. | Implementado |
 | `GamePackage` | Lê e valida o formato de pacote `.ali`. | Implementado |
 | `System` | Consulta uptime e heap livre da plataforma. | Implementado |
-| `GameRuntime` | Gerencia o ciclo de vida de um jogo por vez. | [Especificado](./docs/game-runtime.md) |
+| `GameRuntime` | Gerencia o ciclo de vida de um jogo por vez. | Implementado (lifecycle) |
 | JavaScript Engine | Interpreta o código JavaScript dos jogos. | Planejado |
 | Game SDK | Oferece aos jogos uma API para usar os recursos do console. | Planejado |
 
@@ -116,16 +117,20 @@ flowchart TD
     D --> F["HomeScreen"]
     E --> F
     F --> G["Loop: Input::update()"]
-    G --> H{"GamesScreen visivel?"}
-    H -->|Sim| I["GamesScreen::update()"]
+    G --> R{"GameRuntime em execucao?"}
+    R -->|Sim| S["GameRuntime::update()"]
+    S -->|"B (provisorio)"| T["stop + HomeScreen"]
+    T --> G
+    R -->|Nao| H{"GamesScreen visivel?"}
+    H -->|Sim| I["Console: A inicia, B fecha"]
     H -->|Nao| J["HomeScreen::update()"]
     I --> G
     J --> G
 ```
 
-A opção Jogos abre a `GamesScreen`, que percorre a lista com UP/DOWN; hoje `A` e `B` apenas fecham a lista.
+A opção Jogos abre a `GamesScreen`, que percorre a lista com UP/DOWN. `A` abre o pacote do jogo selecionado (`GameRuntime::launch`) e mostra um aviso temporário de execução; `B` encerra a sessão ou fecha a lista. Ainda não há gameplay.
 
-O fluxo futuro prevê seleção e execução de um jogo; essas etapas ainda não estão implementadas:
+O fluxo futuro acrescenta a engine JavaScript e o Game SDK ao Runtime já existente:
 
 ```mermaid
 flowchart LR
@@ -284,7 +289,7 @@ for (size_t i = 0; i < console.gameLibrary().count(); ++i) {
 }
 ```
 
-A lista contém apenas pacotes válidos, na ordem do sistema de arquivos. `/games` é procurado com essa caixa; subdiretórios e arquivos que não terminam em `.ali` são ignorados. `GameInfo` guarda metadados e o caminho da capa dentro do pacote; nenhuma capa ou arquivo permanece aberto após o `scan()`. A `GamesScreen` consome a lista; a execução de um jogo a partir dela depende do `GameRuntime`, cujo contrato está em [`docs/game-runtime.md`](./docs/game-runtime.md).
+A lista contém apenas pacotes válidos, na ordem do sistema de arquivos. `/games` é procurado com essa caixa; subdiretórios e arquivos que não terminam em `.ali` são ignorados. `GameInfo` guarda metadados e o caminho da capa dentro do pacote; nenhuma capa ou arquivo permanece aberto após o `scan()`. A `GamesScreen` consome a lista e o `Console` chama `GameRuntime::launch()` com o jogo selecionado, que abre o pacote e mantém a sessão ([`docs/game-runtime.md`](./docs/game-runtime.md)).
 
 O `GamePackage` recebe uma referência ao Storage e é mantido como membro da `GameLibrary`; ele não é usado diretamente pelo menu. Como o objeto mantém o índice completo em memória (~9 KB), qualquer uso direto também deve ter vida longa:
 
@@ -344,9 +349,10 @@ Não há CI configurada. O build do firmware e os testes nativos são:
 ~/.platformio/penv/bin/pio run
 bash test/run-game-package-tests.sh
 bash test/run-system-tests.sh
+bash test/run-game-runtime-tests.sh
 python3 test/make_game_package_fixtures.py /path/to/fixture-output
 ```
 
-Os testes nativos validam o cabeçalho, os registros do índice, os caminhos e o manifesto do Game Package, além da descoberta, do filtro de extensão, dos pacotes inválidos e do limite da Game Library. O teste de `System` valida a delegação de uptime e heap com funções de plataforma substitutas. O runner do `GameRuntime` será adicionado junto da implementação descrita em [`docs/game-runtime.md`](./docs/game-runtime.md). O gerador cria pacotes válidos e casos malformados para copiar ao cartão; eles não simulam a integração com o Storage físico. Para validar o cartão, use uma placa ESP32 e cartão FAT funcional com a pinagem definida em `data/config.ini`. Teste cartão ausente, `/games` ausente ou vazio, pacotes gerados, arquivo interno inexistente, leitura incremental do `Assets/large.bin` (16 KiB, maior que o buffer de exemplo) e a listagem de vários jogos. O Wokwi deste projeto não cobre esses testes físicos; sem cartão, a inicialização opcional do Storage deve falhar sem impedir o restante do console.
+Os testes nativos validam o cabeçalho, os registros do índice, os caminhos e o manifesto do Game Package, além da descoberta, do filtro de extensão, dos pacotes inválidos e do limite da Game Library. O teste de `System` valida a delegação de uptime e heap com funções de plataforma substitutas. O runner do `GameRuntime` cobre o lifecycle com ASan/UBSan: estado inicial, falhas de `launch()`, rejeição de segunda sessão, incremento de frames e `stop()` idempotente. O gerador cria pacotes válidos e casos malformados para copiar ao cartão; eles não simulam a integração com o Storage físico. Para validar o cartão, use uma placa ESP32 e cartão FAT funcional com a pinagem definida em `data/config.ini`. Teste cartão ausente, `/games` ausente ou vazio, pacotes gerados, arquivo interno inexistente, leitura incremental do `Assets/large.bin` (16 KiB, maior que o buffer de exemplo) e a listagem de vários jogos. O Wokwi deste projeto não cobre esses testes físicos; sem cartão, a inicialização opcional do Storage deve falhar sem impedir o restante do console.
 
 As matrizes detalhadas de integração física e o status de execução estão em [`docs/game-package-validation.md`](./docs/game-package-validation.md) e [`docs/game-library.md`](./docs/game-library.md).
