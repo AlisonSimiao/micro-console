@@ -3,6 +3,7 @@
 #include "boot/boot.hpp"
 #include "config/config.hpp"
 #include "game/library/game_library.hpp"
+#include "game/runtime/game_runtime.hpp"
 #include "hal/display/display.hpp"
 #include "hal/input/input.hpp"
 #include "hal/storage/storage.hpp"
@@ -24,11 +25,15 @@ public:
     System& system();
 
 private:
+    void reportRuntimeFailure();
+    void showGamePlaceholder();
+
     Config config_;
     Input input_;
     Display display_;
     Storage storage_;
     GameLibrary gameLibrary_;
+    GameRuntime gameRuntime_;
     System system_;
     Boot boot_;
     HomeScreen homeScreen_;

@@ -72,9 +72,6 @@ void GamesScreen::update()
 
     const size_t count = gameLibrary_.count();
     if (count == 0) {
-        if (input_.wasPressed("A") || input_.wasPressed("B")) {
-            visible_ = false;
-        }
         return;
     }
 
@@ -86,8 +83,8 @@ void GamesScreen::update()
         }
     } else if (input_.wasPressed("DOWN")) {
         selectedIndex_ = static_cast<uint8_t>((selectedIndex_ + 1) % count);
-    } else if (input_.wasPressed("A") || input_.wasPressed("B")) {
-        visible_ = false;
+    } else {
+        // Iniciar e encerrar pertencem ao Console; a tela só reage à navegação.
         return;
     }
 
@@ -97,6 +94,11 @@ void GamesScreen::update()
 bool GamesScreen::isVisible() const
 {
     return visible_;
+}
+
+const GameInfo* GamesScreen::selected() const
+{
+    return gameLibrary_.get(selectedIndex_);
 }
 
 void GamesScreen::close()
@@ -120,7 +122,7 @@ void GamesScreen::draw()
     const size_t count = gameLibrary_.count();
     if (count == 0) {
         drawCenteredText(display_, height / 2 - 8, "NENHUM JOGO", COLOR_SUBTITLE, 2);
-        drawCenteredText(display_, height - 26, "A/B: VOLTAR", COLOR_SUBTITLE, 1);
+        drawCenteredText(display_, height - 26, "B: VOLTAR", COLOR_SUBTITLE, 1);
         return;
     }
 
@@ -137,5 +139,6 @@ void GamesScreen::draw()
                 game->name[0] != '\0' ? game->name : game->id, row == 0);
     }
 
-    drawCenteredText(display_, height - 26, "UP/DOWN: NAVEGAR", COLOR_SUBTITLE, 1);
+    drawCenteredText(display_, height - 26, "UP/DOWN: NAVEGAR  A: JOGAR  B: VOLTAR",
+                     COLOR_SUBTITLE, 1);
 }

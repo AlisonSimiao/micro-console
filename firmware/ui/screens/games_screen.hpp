@@ -15,6 +15,9 @@ public:
     bool isVisible() const;
     void close();
 
+    // Jogo sob o cursor. Retorna nullptr quando a lista está vazia.
+    const GameInfo* selected() const;
+
 private:
     static constexpr uint8_t MAX_VISIBLE_ROWS = 5;
 
