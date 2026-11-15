@@ -1,6 +1,6 @@
 # Micro Console
 
-Firmware para um console baseado em ESP32 DevKit (`esp32dev`), desenvolvido com PlatformIO e Arduino. O projeto está em desenvolvimento: atualmente inclui inicialização do console, configuração via LittleFS, HALs de input, display e Storage, leitor de pacotes de jogos, descoberta de jogos no cartão e o menu principal navegável.
+Firmware para um console baseado em ESP32 DevKit (`esp32dev`), desenvolvido com PlatformIO e Arduino. O projeto está em desenvolvimento: atualmente inclui inicialização do console, configuração via LittleFS, HALs de input, display e Storage, leitor de pacotes de jogos, descoberta de jogos no cartão, menu principal, lista de jogos e consultas de plataforma pelo `System`. A execução de jogos tem contrato definido, mas ainda não está implementada.
 
 ## Recursos atuais
 
@@ -12,15 +12,17 @@ Firmware para um console baseado em ESP32 DevKit (`esp32dev`), desenvolvido com 
 - Game Package para validar pacotes `.ali`, ler o manifesto e abrir arquivos internos incrementalmente.
 - Game Library para descobrir e representar os jogos válidos em `/games`, sem executá-los.
 - Menu principal com as opções Jogos, Configuracoes e Sobre, com seleção circular por UP/DOWN.
+- Lista de jogos que percorre a Game Library; iniciar um jogo ainda não está implementado.
+- `System` com consultas pontuais de uptime e heap livre.
 - Simulação do circuito no Wokwi.
 
-A tela que consome a Game Library, o áudio e o runtime JavaScript ainda não estão implementados.
+O áudio, o runtime de jogos, a JavaScript Engine e o Game SDK ainda não estão implementados. O contrato do `GameRuntime` está especificado em [`docs/game-runtime.md`](./docs/game-runtime.md), e a decisão de posse de recursos em [`ADR-0006`](./docs/adr/0006-game-runtime-session-and-resource-ownership.md).
 O formato `.ali` V1 está descrito em [`docs/game-package-format.md`](./docs/game-package-format.md), e sua decisão arquitetural em [`ADR-0005`](./docs/adr/0005-formato-do-game-package.md). A Game Library está documentada em [`docs/game-library.md`](./docs/game-library.md).
 O módulo `System` oferece consultas pontuais de uptime e heap livre; detalhes em [`docs/system.md`](./docs/system.md).
 
 ## Arquitetura
 
-O firmware é organizado em camadas. `Console` é o composition root: possui e conecta os componentes, enquanto `Boot` coordena a inicialização. Os HALs abstraem o hardware; `GameLibrary` descobre pacotes `.ali` por meio do `Storage`. A tela inicial ainda não consome a biblioteca de jogos.
+O firmware é organizado em camadas. `Console` é o composition root: possui e conecta os componentes, enquanto `Boot` coordena a inicialização. Os HALs abstraem o hardware; `GameLibrary` descobre pacotes `.ali` por meio do `Storage`; `GamesScreen` exibe essa lista e o `Console` decide o que fazer com a seleção. A execução de jogos está especificada, mas não implementada.
 
 ### Visão geral
 
@@ -32,6 +34,7 @@ flowchart TB
         Config["Config"]
         System["System<br/>Uptime · heap livre"]
         HomeScreen["HomeScreen<br/>Jogos · Configuracoes · Sobre"]
+        GamesScreen["GamesScreen<br/>Lista de /games"]
     end
 
     subgraph HAL["HAL"]
@@ -55,6 +58,7 @@ flowchart TB
     Console --> Config
     Console --> System
     Console --> HomeScreen
+    Console --> GamesScreen
     Console --> Display
     Console --> Input
     Console --> Storage
@@ -66,6 +70,9 @@ flowchart TB
     Boot --> Storage
     HomeScreen --> Display
     HomeScreen --> Input
+    GamesScreen --> Display
+    GamesScreen --> Input
+    GamesScreen --> Library
     Library --> Package
     Library --> Storage
     Package --> Storage
@@ -75,10 +82,9 @@ flowchart TB
     Runtime -.-> Package
     Runtime -.-> Engine
     Engine -.-> SDK
-    Runtime -.-> System
 ```
 
-As setas sólidas representam relações implementadas; as tracejadas indicam partes planejadas. A `GameLibrary` é preenchida no boot quando o cartão monta, mas a opção Jogos do menu ainda não abre nem exibe essa lista.
+As setas sólidas representam relações implementadas; as tracejadas indicam partes planejadas. A `GameLibrary` é preenchida no boot quando o cartão monta e a `GamesScreen` já exibe a lista; iniciar um jogo pela lista ainda não está implementado.
 
 ### Responsabilidades
 
@@ -88,17 +94,18 @@ As setas sólidas representam relações implementadas; as tracejadas indicam pa
 | `Boot` | Carrega a configuração, valida declarações de pinos e inicializa os módulos. | Implementado |
 | `Config` | Carrega e fornece as configurações persistentes do console. | Implementado |
 | `HomeScreen` | Exibe o menu e permite navegar entre as opções. | Implementado |
+| `GamesScreen` | Lista os jogos da Game Library e mantém a seleção. | Implementado |
 | HAL (`Display`, `Input`, `Storage`) | Abstrai o acesso ao display, aos controles e ao cartão microSD. | Implementado |
 | `GameLibrary` | Descobre pacotes válidos em `/games` e mantém seus metadados. | Implementado |
 | `GamePackage` | Lê e valida o formato de pacote `.ali`. | Implementado |
 | `System` | Consulta uptime e heap livre da plataforma. | Implementado |
-| `GameRuntime` | Gerencia o ciclo de vida e a execução dos jogos. | Planejado |
+| `GameRuntime` | Gerencia o ciclo de vida de um jogo por vez. | [Especificado](./docs/game-runtime.md) |
 | JavaScript Engine | Interpreta o código JavaScript dos jogos. | Planejado |
 | Game SDK | Oferece aos jogos uma API para usar os recursos do console. | Planejado |
 
 ### Fluxo atual e fluxo planejado
 
-No firmware atual, o boot inicializa os módulos; depois, o `Console` tenta descobrir os jogos se o `Storage` estiver montado. No loop, o input é atualizado antes da tela inicial:
+No firmware atual, o boot inicializa os módulos; depois, o `Console` tenta descobrir os jogos se o `Storage` estiver montado. No loop, o input é atualizado antes das telas:
 
 ```mermaid
 flowchart TD
@@ -109,20 +116,27 @@ flowchart TD
     D --> F["HomeScreen"]
     E --> F
     F --> G["Loop: Input::update()"]
-    G --> H["HomeScreen::update()"]
-    H --> G
+    G --> H{"GamesScreen visivel?"}
+    H -->|Sim| I["GamesScreen::update()"]
+    H -->|Nao| J["HomeScreen::update()"]
+    I --> G
+    J --> G
 ```
+
+A opção Jogos abre a `GamesScreen`, que percorre a lista com UP/DOWN; hoje `A` e `B` apenas fecham a lista.
 
 O fluxo futuro prevê seleção e execução de um jogo; essas etapas ainda não estão implementadas:
 
 ```mermaid
 flowchart LR
-    A["HomeScreen"] -.-> B["Selecao do jogo"]
-    B -.-> C["GameRuntime"]
-    C -.-> D["JavaScript Engine"]
-    D -.-> E["Game SDK"]
-    E -.-> F["Jogo em execucao"]
-    F -.-> A
+    A["GamesScreen"] -.-> B["A: jogo selecionado"]
+    B -.-> C["Console: GameRuntime::launch"]
+    C -.-> D["GameRuntime"]
+    D -.-> E["JavaScript Engine"]
+    E -.-> F["Game SDK"]
+    F -.-> G["Jogo em execucao"]
+    G -.->|"B (provisorio) / erro"| H["Console: stop"]
+    H -.-> A
 ```
 
 ### Estrutura de um pacote `.ali`
@@ -219,7 +233,7 @@ Os pinos de Storage são defaults configuráveis, não uma pinagem definitiva. O
 
 ## Interfaces disponíveis
 
-O loop principal chama `Console::update()`, que atualiza o input e a tela inicial. A interface pública do console dá acesso ao input, ao display e ao Storage:
+O loop principal chama `Console::update()`, que atualiza o input e a tela ativa. A interface pública do console dá acesso ao input, ao display, ao Storage, ao `System` e à Game Library:
 
 ```cpp
 console.input().isPressed("A");
@@ -247,7 +261,16 @@ if (console.storage().isMounted()) {
 }
 ```
 
-`StorageFile` fecha automaticamente ao sair de escopo e também pode ser fechado explicitamente; leituras em um arquivo fechado retornam zero. `StorageDirectory` faz o mesmo e ocupa um dos quatro slots de arquivo aberto; `next()` lista apenas filhos imediatos, sem recursão. `StorageFileInfo` contém apenas `isDirectory` e `size`. As consultas `wasPressed()` e `wasReleased()` representam bordas detectadas na atualização corrente; consulte-as após a atualização de input. O console inicia no menu principal: UP e DOWN alternam a opção selecionada de forma circular, e os demais botões ainda não executam ações.
+`StorageFile` fecha automaticamente ao sair de escopo e também pode ser fechado explicitamente; leituras em um arquivo fechado retornam zero. `StorageDirectory` faz o mesmo e ocupa um dos quatro slots de arquivo aberto; `next()` lista apenas filhos imediatos, sem recursão. `StorageFileInfo` contém apenas `isDirectory` e `size`. As consultas `wasPressed()` e `wasReleased()` representam bordas detectadas na atualização corrente; consulte-as após a atualização de input. O console inicia no menu principal: UP e DOWN alternam a opção selecionada de forma circular, e a opção Jogos abre a lista de jogos. Na lista, UP/DOWN navegam e `A` ou `B` fecham; iniciar um jogo ainda não está implementado.
+
+Consultas de plataforma ficam disponíveis pelo `System`:
+
+```cpp
+#include "system/system.hpp"
+
+const uint32_t uptimeMs = console.system().getUptimeMs();
+const uint32_t freeHeap = console.system().getFreeHeap();
+```
 
 A Game Library é populada no boot quando o cartão monta e fica disponível pelo `Console`:
 
@@ -261,7 +284,7 @@ for (size_t i = 0; i < console.gameLibrary().count(); ++i) {
 }
 ```
 
-A lista contém apenas pacotes válidos, na ordem do sistema de arquivos. `/games` é procurado com essa caixa; subdiretórios e arquivos que não terminam em `.ali` são ignorados. `GameInfo` guarda metadados e o caminho da capa dentro do pacote; nenhuma capa ou arquivo permanece aberto após o `scan()`. A opção Jogos do menu ainda não usa essa lista.
+A lista contém apenas pacotes válidos, na ordem do sistema de arquivos. `/games` é procurado com essa caixa; subdiretórios e arquivos que não terminam em `.ali` são ignorados. `GameInfo` guarda metadados e o caminho da capa dentro do pacote; nenhuma capa ou arquivo permanece aberto após o `scan()`. A `GamesScreen` consome a lista; a execução de um jogo a partir dela depende do `GameRuntime`, cujo contrato está em [`docs/game-runtime.md`](./docs/game-runtime.md).
 
 O `GamePackage` recebe uma referência ao Storage e é mantido como membro da `GameLibrary`; ele não é usado diretamente pelo menu. Como o objeto mantém o índice completo em memória (~9 KB), qualquer uso direto também deve ter vida longa:
 
@@ -291,10 +314,12 @@ firmware/
 ├── config/     # Configuração em memória carregada do LittleFS
 ├── game/
 │   ├── library/  # Descoberta e metadados dos jogos em /games
-│   └── package/  # Container .ali, manifesto e arquivos internos
+│   ├── package/  # Container .ali, manifesto e arquivos internos
+│   └── runtime/  # Lifecycle de execução (planejado; contrato em docs/game-runtime.md)
 ├── console/    # Composição do console
+├── system/     # Consultas de plataforma (uptime e heap livre)
 ├── ui/
-│   └── screens/ # Telas da interface (menu principal)
+│   └── screens/ # HomeScreen e GamesScreen
 └── hal/
     ├── core/   # Contratos dos módulos e declarações de pinos
     ├── display/
@@ -305,6 +330,8 @@ data/
 docs/adr/       # Decisões de arquitetura
 docs/game-package-format.md
 docs/game-library.md
+docs/game-runtime.md
+docs/system.md
 ```
 
 Os includes do firmware são relativos a `firmware/`, por exemplo `#include "hal/input/input.hpp"`.
@@ -316,9 +343,10 @@ Não há CI configurada. O build do firmware e os testes nativos são:
 ```bash
 ~/.platformio/penv/bin/pio run
 bash test/run-game-package-tests.sh
+bash test/run-system-tests.sh
 python3 test/make_game_package_fixtures.py /path/to/fixture-output
 ```
 
-Os testes nativos validam o cabeçalho, os registros do índice, os caminhos e o manifesto do Game Package, além da descoberta, do filtro de extensão, dos pacotes inválidos e do limite da Game Library. O gerador cria pacotes válidos e casos malformados para copiar ao cartão; eles não simulam a integração com o Storage físico. Para validar o cartão, use uma placa ESP32 e cartão FAT funcional com a pinagem definida em `data/config.ini`. Teste cartão ausente, `/games` ausente ou vazio, pacotes gerados, arquivo interno inexistente, leitura incremental do `Assets/large.bin` (16 KiB, maior que o buffer de exemplo) e a listagem de vários jogos. O Wokwi deste projeto não cobre esses testes físicos; sem cartão, a inicialização opcional do Storage deve falhar sem impedir o restante do console.
+Os testes nativos validam o cabeçalho, os registros do índice, os caminhos e o manifesto do Game Package, além da descoberta, do filtro de extensão, dos pacotes inválidos e do limite da Game Library. O teste de `System` valida a delegação de uptime e heap com funções de plataforma substitutas. O runner do `GameRuntime` será adicionado junto da implementação descrita em [`docs/game-runtime.md`](./docs/game-runtime.md). O gerador cria pacotes válidos e casos malformados para copiar ao cartão; eles não simulam a integração com o Storage físico. Para validar o cartão, use uma placa ESP32 e cartão FAT funcional com a pinagem definida em `data/config.ini`. Teste cartão ausente, `/games` ausente ou vazio, pacotes gerados, arquivo interno inexistente, leitura incremental do `Assets/large.bin` (16 KiB, maior que o buffer de exemplo) e a listagem de vários jogos. O Wokwi deste projeto não cobre esses testes físicos; sem cartão, a inicialização opcional do Storage deve falhar sem impedir o restante do console.
 
 As matrizes detalhadas de integração física e o status de execução estão em [`docs/game-package-validation.md`](./docs/game-package-validation.md) e [`docs/game-library.md`](./docs/game-library.md).

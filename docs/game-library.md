@@ -1,6 +1,6 @@
 # Game Library
 
-A Game Library descobre, valida e representa os jogos disponíveis no cartão microSD. Ela é a camada entre o `Storage`/`GamePackage` e a futura tela de jogos:
+A Game Library descobre, valida e representa os jogos disponíveis no cartão microSD. Ela é a camada entre o `Storage`/`GamePackage` e a tela de jogos:
 
 ```text
 /games/
@@ -14,7 +14,7 @@ A Game Library descobre, valida e representa os jogos disponíveis no cartão mi
         └── GameInfo[MAX_GAMES]
         │
         ▼
-   HomeScreen / futura GamesScreen
+   GamesScreen
 ```
 
 ## Responsabilidade
@@ -141,14 +141,14 @@ Input / Display / Storage
   ↓
 GameLibrary
   ↓
-Boot
+System / Boot
   ↓
-HomeScreen
+HomeScreen / GamesScreen
 ```
 
 `Console::begin()` chama `scan()` depois do `Boot` e somente quando o Storage montou. Uma falha de descoberta é informada no Serial, mas não bloqueia o boot. A lista é acessível por `console.gameLibrary()`.
 
-A tela principal ainda não consome a lista. A integração com a UI será feita pela futura `GamesScreen`.
+A `GamesScreen` consome a lista, mas não inicia jogos: a execução pertence ao `GameRuntime`, cujo contrato está em [game-runtime.md](./game-runtime.md).
 
 ## Comportamento de `scan()`
 

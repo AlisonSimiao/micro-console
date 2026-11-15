@@ -102,7 +102,9 @@ firmware/
 ├── ui/
 │   └── screens/
 │       ├── home_screen.hpp
-│       └── home_screen.cpp
+│       ├── home_screen.cpp
+│       ├── games_screen.hpp
+│       └── games_screen.cpp
 │
 ├── boot/
 │   ├── boot.hpp
@@ -116,15 +118,18 @@ firmware/
 │   ├── library/
 │   │   ├── game_library.hpp
 │   │   └── game_library.cpp
-│   └── package/
-│       ├── game_package.hpp
-│       ├── game_package.cpp
-│       ├── game_manifest.hpp
-│       ├── game_manifest.cpp
-│       ├── package_reader.hpp
-│       ├── package_reader.cpp
-│       ├── package_format.hpp
-│       └── package_format.cpp
+│   ├── package/
+│   │   ├── game_package.hpp
+│   │   ├── game_package.cpp
+│   │   ├── game_manifest.hpp
+│   │   ├── game_manifest.cpp
+│   │   ├── package_reader.hpp
+│   │   ├── package_reader.cpp
+│   │   ├── package_format.hpp
+│   │   └── package_format.cpp
+│   └── runtime/
+│       ├── game_runtime.hpp
+│       └── game_runtime.cpp
 │
 ├── hal/
 │   ├── core/
@@ -140,14 +145,12 @@ firmware/
 │       ├── storage_backend.hpp
 │       └── storage_backend.cpp
 │
-├── system/
-│   └── ...
-│
-└── runtime/
-    └── ...
+└── system/
+    ├── system.hpp
+    └── system.cpp
 ```
 
-Nem todos os diretórios acima precisam existir enquanto não houver implementação correspondente.
+`game/runtime/` está especificado em [docs/game-runtime.md](./docs/game-runtime.md), mas ainda não implementado. O mesmo vale para `hal/audio/`.
 
 ### Includes
 
@@ -215,12 +218,13 @@ A direção das dependências deve permanecer previsível.
 
 Pode:
 
-- possuir `Config`, `Boot`, os HALs do console e a `GameLibrary`;
+- possuir `Config`, `Boot`, os HALs do console, a `GameLibrary`, o `System` e (quando implementado) o `GameRuntime`;
 - registrar os HALs no `Boot`;
 - iniciar o ciclo de vida do console;
 - orquestrar o `update()` dos componentes atualizáveis;
-- expor acesso interno aos módulos (`input()`, `display()`, `storage()`, `gameLibrary()`);
-- instanciar e conectar as telas da interface.
+- expor acesso interno aos módulos (`input()`, `display()`, `storage()`, `gameLibrary()`, `system()`);
+- instanciar e conectar as telas da interface;
+- decidir as transições entre telas e sessão de jogo (`HomeScreen` → `GamesScreen` → `GameRuntime` → Home).
 
 Não deve:
 
@@ -229,9 +233,10 @@ Não deve:
 - desenhar ou navegar pelo menu da interface;
 - interpretar JavaScript;
 - executar gameplay;
+- interpretar `.ali` ou abrir pacotes diretamente no fluxo de UI;
 - virar uma máquina de estados de boot prematuramente.
 
-Os módulos são membros por valor e declarados na ordem de dependência (`Config` → HALs → `GameLibrary` → `Boot` → telas), pois os HALs guardam uma referência ao `Config`, a `GameLibrary` guarda referências ao `Storage` e as telas guardam referências aos HALs.
+Os módulos são membros por valor e declarados na ordem de dependência (`Config` → HALs → `GameLibrary` → `GameRuntime` → `System` → `Boot` → telas), pois os HALs guardam uma referência ao `Config`, a `GameLibrary` e o `GameRuntime` guardam referências ao `Storage` e as telas guardam referências aos HALs.
 
 ```cpp
 class Console {
@@ -245,6 +250,7 @@ public:
     Display& display();
     Storage& storage();
     GameLibrary& gameLibrary();
+    System& system();
 
 private:
     Config config_;
@@ -252,8 +258,11 @@ private:
     Display display_;
     Storage storage_;
     GameLibrary gameLibrary_;
+    GameRuntime gameRuntime_;   // planejado: sessão de jogo
+    System system_;
     Boot boot_;
     HomeScreen homeScreen_;
+    GamesScreen gamesScreen_;
 };
 ```
 
@@ -265,7 +274,9 @@ As APIs `input()` e `display()` são **internas do firmware**. A futura API Java
 
 As telas recebem referências aos HALs de que precisam (por exemplo, `Display` e `Input`), mas não inicializam hardware. Desenham pela API pública do `Display` e leem eventos pelos métodos do `Input`, sem conhecer GPIOs, pinos ou tipos do LovyanGFX.
 
-`HomeScreen` (`ui/screens/`) é a tela inicial do console. Ela apresenta o menu principal com as opções Jogos, Configuracoes e Sobre (sem acentos, pois a fonte embutida do Display não os suporta), mantém o índice selecionado e trata a navegação circular com UP/DOWN. Nenhuma opção executa ação nesta versão.
+`HomeScreen` (`ui/screens/`) é a tela inicial do console. Ela apresenta o menu principal com as opções Jogos, Configuracoes e Sobre (sem acentos, pois a fonte embutida do Display não os suporta), mantém o índice selecionado e trata a navegação circular com UP/DOWN. A opção Jogos abre a `GamesScreen`; as demais ainda não executam ação.
+
+`GamesScreen` lista os jogos da `GameLibrary`, com seleção circular por UP/DOWN e no máximo cinco linhas visíveis, sem rolagem além da janela atual. Ela desenha pela API do `Display` e lê bordas do `Input`, mas não abre o `.ali`, não executa jogo e não decide a transição para o Runtime. Na versão atual `A` e `B` apenas fecham a lista; o contrato do `GameRuntime` prevê `A` para iniciar o jogo selecionado e `B` para voltar, com a decisão no `Console` ([docs/game-runtime.md](./docs/game-runtime.md)).
 
 #### Boot
 
@@ -653,7 +664,7 @@ A `GameLibrary` usa um único `GamePackage` como membro de vida longa, evitando 
 
 `MAX_GAMES` é 16. `GameInfo` ocupa 480 bytes, então os metadados somam 7.680 bytes; com o `GamePackage` (~9,3 KB), `sizeof(GameLibrary)` fica em ~17 KB. O limite é verificado por `static_assert` e deve ser revisto junto com a documentação antes de aumentar. `scan()` usa ~4 KB adicionais de stack por causa de `GamePackage::open()`.
 
-O `Console` possui a `GameLibrary`, a expõe por `console.gameLibrary()` e chama `scan()` no boot somente quando o Storage montou. A tela de jogos ainda não consome a lista; `HomeScreen` continua sem ação para a opção Jogos.
+O `Console` possui a `GameLibrary`, a expõe por `console.gameLibrary()` e chama `scan()` no boot somente quando o Storage montou. A `GamesScreen` consome a lista; o lançamento do jogo depende do `GameRuntime`, ainda não implementado.
 
 Detalhes, decisões e matriz de validação estão em [docs/game-library.md](./docs/game-library.md).
 
@@ -661,19 +672,19 @@ Detalhes, decisões e matriz de validação estão em [docs/game-library.md](./d
 
 # System
 
-`system/` contém funcionalidades de nível superior ao hardware.
+`system/` contém serviços da plataforma usados pelo console, escondendo APIs do Arduino/ESP32 dos consumidores.
 
-Exemplos futuros:
+A versão atual oferece somente consultas pontuais:
 
 ```text
-InputManager
-AudioManager
-GameManager
-Settings
-Filesystem
+System:
+  getUptimeMs()   → millis()
+  getFreeHeap()   → ESP.getFreeHeap()
 ```
 
-A diferença fundamental é:
+`System` não tem `begin()`, não participa do boot, não mantém estado próprio nem faz monitoramento periódico. O `Console` possui uma instância por valor, exposta por `console.system()`. Detalhes e validação em [docs/system.md](./docs/system.md).
+
+A diferença entre System e HAL continua valendo para serviços futuros:
 
 ```text
 HAL
@@ -693,26 +704,54 @@ Audio System
 → controla volume, efeitos, fila e comportamento de reprodução
 ```
 
-Evite colocar lógica de negócio do sistema dentro dos HALs.
+A coordenação do ciclo de vida de jogos **não** pertence ao `System`: ela é do `GameRuntime`. Evite colocar lógica de negócio do sistema dentro dos HALs.
 
 ---
 
-# Runtime
+# Game Runtime
 
-`runtime/` será responsável pela execução dos jogos.
+`game/runtime/` controla a execução de **um jogo por vez**. O contrato está fechado em [docs/game-runtime.md](./docs/game-runtime.md) e a decisão de posse de recursos na [ADR-0006](./docs/adr/0006-game-runtime-session-and-resource-ownership.md); **o código ainda não existe**.
 
-O Game Package apenas valida e fornece arquivos. Carregar ou executar o entrypoint pertence ao Runtime futuro.
+O Game Package apenas valida e fornece arquivos. Carregar ou executar o entrypoint pertence ao Runtime, que hoje está limitado ao lifecycle: nenhum JavaScript é interpretado.
 
-A fronteira planejada é:
+```text
+GameLibrary → GameInfo → GameRuntime → GamePackage
+                              │
+                              ▼
+                     JavaScript Engine (futuro)
+```
+
+API fechada:
+
+```text
+GameRuntime(Storage&)
+  launch(const GameInfo&)   → abre e valida o pacote
+  update()                  → avança a sessão; no-op fora de Running
+  stop()                    → encerra e libera; idempotente
+  state() / failure() / isRunning() / frameCount()
+```
+
+Regras que a implementação não pode reinventar:
+
+- Estados públicos: `Idle`, `Running`, `Failed` (enums aninhados em `GameRuntime`). Não existe `Loading` público, `Paused` nem `Stopping`.
+- `launch()` com jogo em execução é **rejeitado** e não altera o jogo atual.
+- `Failed` significa sempre nenhum recurso retido; o `Console` pode voltar à Home sem limpeza extra.
+- O Runtime possui seu próprio `GamePackage` (~9,3 KB adicionais); não compartilha o da `GameLibrary`.
+- O Runtime não lê `Input`, não desenha, não imprime e não inclui `Arduino.h`; devolve `Failure` e o `Console` loga.
+- Durante `Running`, o `Console` não atualiza telas: `Input` e `Display` pertencem ao jogo.
+- `B` para sair durante a execução é política **provisória** do `Console`, não do Runtime.
+- Não criar interface `GameEngine` até a engine ser escolhida.
+
+A fronteira planejada de execução é:
 
 ```text
 Game JavaScript
        │
        ▼
- Game Runtime API
+ Game SDK
        │
        ▼
-     System
+    System
        │
        ▼
       HAL
@@ -911,28 +950,37 @@ setup()
 loop()
  └── Console::update()
       ├── Input::update()
-      └── HomeScreen::update()
+      ├── GamesScreen visível? → GamesScreen::update()
+      └── senão → HomeScreen::update()
 ```
 
 Em caso de falha, `Console::begin()` retorna `false` e o `main.cpp` interrompe a execução. O `Console` apenas propaga o erro; o `Boot` é quem imprime o motivo.
 
-`Input::update()` precisa preceder `HomeScreen::update()`: a tela lê as bordas geradas na atualização corrente do Input.
+`Input::update()` precisa preceder `HomeScreen::update()` e `GamesScreen::update()`: as telas leem as bordas geradas na atualização corrente do Input.
 
 `Console::begin()` registra Display e Input como obrigatórios e Storage como opcional. O cartão é tentado após a configuração e a validação de pinos; uma falha de Storage não interrompe o menu. Consulte o módulo pelo `console.storage()` e verifique `isMounted()` antes de usar as operações de arquivo. Quando o Storage monta, `Console::begin()` também chama `gameLibrary_.scan()`; uma falha de descoberta é apenas informada no Serial, nunca bloqueia o boot.
 
-O sistema ainda não possui o loop de atualização completo; Audio, System e Runtime ainda não participam dele.
+O sistema ainda não possui o loop de atualização completo; Audio e GameRuntime ainda não participam dele, e `System` não tem `update()` por não manter estado.
 
-A direção planejada para o MVP é um loop cooperativo:
+A direção planejada para o MVP é um loop cooperativo, com execução de jogo exclusiva:
 
 ```text
 loop()
  └── Console::update()
       ├── Input::update()
-      ├── HomeScreen::update()
-      ├── Audio::update()
-      ├── System::update()
-      └── Runtime::update()
+      │
+      ├── se GameRuntime::isRunning():
+      │     ├── GameRuntime::update()
+      │     └── tratar saída provisória (B)
+      │
+      └── senão:
+            ├── GamesScreen::update() ou HomeScreen::update()
+            └── Audio::update()
 ```
+
+O `GameRuntime` não é um item adicional da lista de `update()` das telas: enquanto ele roda, as telas não são atualizadas. Ver [docs/game-runtime.md](./docs/game-runtime.md).
+
+Ao voltar da `GamesScreen` ou de uma sessão, o `Console` chama `HomeScreen::begin()` para redesenhar a tela inteira; `HomeScreen::update()` só redesenha as opções quando a seleção muda, então `close()` sozinho deixaria a lista congelada no Display.
 
 Não introduza um `UpdateManager` enquanto existir apenas um componente atualizável.
 
@@ -1007,15 +1055,15 @@ O estado de inicialização dos HALs usa `isInstantiated()` / `setInstantiated()
 
 Os itens abaixo descrevem o estado atual do projeto e não devem ser tratados automaticamente como decisões arquiteturais.
 
-- `Boot` não possui `update()`; `Console::update()` chama `Input::update()` e `HomeScreen::update()` diretamente.
-- Ainda não existem Audio, System nem Runtime.
-- A Game Library existe e é populada no boot, mas nenhuma tela consome a lista.
+- `Boot` não possui `update()`; `Console::update()` chama `Input::update()`, a tela visível e (quando implementado) o `GameRuntime` diretamente.
+- Ainda não existem Audio nem `GameRuntime`. O contrato do Runtime está fechado em [docs/game-runtime.md](./docs/game-runtime.md); a implementação está pendente.
+- A Game Library é populada no boot e a `GamesScreen` consome a lista, mas iniciar um jogo ainda não está implementado.
 - A Game Library ordena os jogos na ordem do sistema de arquivos e não remove IDs duplicados.
 - O Game Package possui testes nativos para o formato, mas a integração de leitura deve ser validada com cartão microSD físico.
 - A Game Library possui testes nativos, mas a descoberta e a listagem de `/games` devem ser validadas com cartão microSD físico.
 - O Storage está implementado, mas a leitura ainda precisa de validação com cartão microSD físico. A ausência do cartão no Wokwi limita a validação local e não indica falha do Storage.
 - A pinagem padrão do Storage é provisória: usa GPIOs de strapping (2, 5 e 15) e deve ser validada na placa.
-- O menu principal possui três opções selecionáveis, mas nenhuma delas executa ação.
+- A opção Jogos do menu abre a `GamesScreen`; Configuracoes e Sobre ainda não executam ação.
 
 Problemas conhecidos devem ser corrigidos quando fizerem parte da área afetada pela mudança ou quando forem explicitamente tratados.
 
@@ -1067,15 +1115,19 @@ A evolução planejada do firmware é:
       ↓
 10. Game Library ✅ (descoberta em `/games`; validação física pendente)
       ↓
-11. GamesScreen ⏳
+11. GamesScreen ✅ (lista os jogos; iniciar jogo pendente)
       ↓
-12. Audio ⏳
+12. System ✅ (uptime e heap livre)
       ↓
-13. System ⏳
+13. Audio ⏳
       ↓
-14. Game Runtime ⏳
+14. GameRuntime ⏳ (contrato fechado; implementação pendente)
       ↓
-15. JavaScript games ⏳
+15. JavaScript Engine ⏳
+      ↓
+16. Game SDK ⏳
+      ↓
+17. JavaScript games ⏳
 ```
 
 A implementação deve evoluir incrementalmente.
