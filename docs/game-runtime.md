@@ -209,12 +209,12 @@ void update();
 
 - `state() != Running` → retorno imediato, sem efeito. Chamar `update()` em
   `Idle` ou `Failed` é sempre seguro.
-- `Running` → incrementa `frameCount()` e, quando a engine existir, será o
-  **único** ponto de avanço do jogo:
+- `Running` → incrementa `frameCount()` e, quando a engine estiver integrada,
+  será o **único** ponto de avanço do jogo:
 
 ```text
 update()
-   ├── engine.update()      (futuro)
+   ├── engine.frame(dt, orçamento)   (após o spike #8; update passa a receber dtMs)
    └── frameCount_++
 ```
 
@@ -318,9 +318,9 @@ O caminho do jogo vem de `GameInfo::packagePath`; o Runtime não procura jogos,
 não valida `/games` e não chama `scan()`. Se o pacote mudar no cartão entre a
 descoberta e o `launch()`, a validação do `GamePackage` decide o resultado.
 
-## JavaScript Engine (futuro)
+## JavaScript Engine
 
-A engine será uma dependência interna do Runtime, nunca o contrário:
+A engine é uma dependência interna do Runtime, nunca o contrário:
 
 ```text
 GameRuntime
@@ -332,17 +332,30 @@ JavaScriptEngine
 Game SDK
 ```
 
-Ponto de inserção fechado nesta versão:
+Pontos de inserção planejados:
 
 ```text
-launch()   → abre e valida o pacote
-update()   → engine.update()
-stop()     → engine.stop(); package.close()
+launch()         → abre o pacote; engine.begin(); reserveSource(); copia o
+                   entrypoint; engine.load(orçamento de carga)
+update(dtMs)     → engine.frame(dtMs, orçamento de frame)
+stop()           → engine.end(); package.close()
 ```
 
-**Não criar uma interface `GameEngine` agora.** A engine ainda não foi escolhida;
-a interface seria inventada sem um consumidor real. O contrato acima já fixa
-onde ela entra.
+A engine proposta é o **MQuickJS**, atrás da fachada `JsEngine`, com arena fixa
+em PSRAM alocada pela própria engine e um frame por chamada (`onFrame(dt)`). O
+contrato, o orçamento de memória e os gates de validação estão em
+[JavaScript Engine](./javascript-engine.md) e na
+[ADR-0007](./adr/0007-javascript-engine.md), com status Proposto. A integração
+depende do ESP32-S3 com PSRAM e está no spike
+[#8](https://github.com/AlisonSimiao/micro-console/issues/8).
+
+Quando integrada, a API deste documento muda: `update()` passa a receber `dtMs`
+e `Failure` ganha os valores de erro da engine. Até lá, o contrato acima
+(`update()` sem parâmetros) continua valendo.
+
+A ADR-0007 propõe substituir a interface `GameEngine` adiada na ADR-0006 pela
+fachada `JsEngine`, porque agora há dois consumidores reais (o Runtime e os
+testes nativos com um fake).
 
 ## Fronteira com o Game SDK (futuro)
 

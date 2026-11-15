@@ -2,6 +2,8 @@
 
 - Status: Aceito
 - Data: 2026-11-14
+- A [ADR-0007](./0007-javascript-engine.md) (proposta) substituirá, quando
+  aceita, apenas a decisão "Não criar interface `GameEngine` agora".
 
 ## Contexto
 

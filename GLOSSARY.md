@@ -33,8 +33,16 @@ O intervalo entre um `launch()` bem-sucedido e o `stop()` correspondente, inclui
 _Avoid_: Instância, processo, jogo aberto
 
 **JavaScript Engine**:
-O componente que interpreta o código JavaScript do jogo e executa o loop da linguagem. Ainda não escolhido.
+O componente que interpreta o código JavaScript do jogo e executa um frame por chamada. Planejada sobre o MQuickJS, atrás da fachada `JsEngine` (ADR-0007, proposta); ainda não existe código.
 _Avoid_: Runtime, interpretador do console
+
+**Arena**:
+O bloco de memória de tamanho fixo que a JavaScript Engine aloca em PSRAM no início da sessão e libera no fim; é toda a memória dinâmica disponível ao jogo.
+_Avoid_: Heap da engine, pool
+
+**Frame**:
+Uma execução de `onFrame(dt)` pela JavaScript Engine, chamada pelo `GameRuntime`. Não é um frame de vídeo; o jogo pode desenhar durante ele pelo Game SDK, mas o frame não implica atualizar a tela inteira.
+_Avoid_: Tick, ciclo, iteração
 
 **Game SDK**:
 A camada de APIs lógicas oferecida ao jogo (`input`, `graphics`, `audio`, filesystem limitado). Ainda não implementada.

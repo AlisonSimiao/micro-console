@@ -104,7 +104,7 @@ As setas sólidas representam relações implementadas; as tracejadas indicam pa
 | `GamePackage` | Lê e valida o formato de pacote `.ali`. | Implementado |
 | `System` | Consulta uptime e heap livre da plataforma. | Implementado |
 | `GameRuntime` | Gerencia o ciclo de vida de um jogo por vez. | Implementado (lifecycle) |
-| JavaScript Engine | Interpreta o código JavaScript dos jogos. | Planejado |
+| JavaScript Engine | Interpreta o código JavaScript dos jogos. | Planejado (MQuickJS) |
 | Game SDK | Oferece aos jogos uma API para usar os recursos do console. | Planejado |
 
 ### Fluxo atual e fluxo planejado
@@ -163,6 +163,8 @@ MeuJogo.ali
 ```
 
 O formato e a validação já estão implementados. A leitura fornece os arquivos em blocos; a execução do entrypoint JavaScript continua planejada.
+
+A engine proposta é o **MQuickJS**, com arena de memória fixa em PSRAM e um frame por chamada; a decisão é confirmada pelo spike [#8](https://github.com/AlisonSimiao/micro-console/issues/8). A proposta, o contrato e o orçamento de memória estão em [`docs/javascript-engine.md`](./docs/javascript-engine.md) e na [ADR-0007](./docs/adr/0007-javascript-engine.md). O alvo dessa integração é o ESP32-S3 com PSRAM; o hardware atual continua usando o ESP32 clássico.
 
 ## Hardware padrão
 
@@ -321,6 +323,7 @@ firmware/
 ├── boot/       # Orquestra a inicialização
 ├── config/     # Configuração em memória carregada do LittleFS
 ├── game/
+│   ├── engine/   # (planejado) Fachada JsEngine e engine vendorizada (docs/javascript-engine.md)
 │   ├── library/  # Descoberta e metadados dos jogos em /games
 │   ├── package/  # Container .ali, manifesto e arquivos internos
 │   └── runtime/  # Lifecycle da sessão de jogo (docs/game-runtime.md)
@@ -339,6 +342,7 @@ docs/adr/       # Decisões de arquitetura
 docs/game-package-format.md
 docs/game-library.md
 docs/game-runtime.md
+docs/javascript-engine.md
 docs/system.md
 test/           # Testes nativos, fakes de HAL e fixtures
 .github/workflows/ci.yml

@@ -113,6 +113,10 @@ firmware/
 │   └── config.cpp
 │
 ├── game/
+│   ├── engine/              (planejado; ainda não existe)
+│   │   ├── js_engine.hpp
+│   │   ├── mquickjs_engine.hpp
+│   │   └── mquickjs_engine.cpp
 │   ├── library/
 │   │   ├── game_library.hpp
 │   │   └── game_library.cpp
@@ -148,7 +152,7 @@ firmware/
     └── system.cpp
 ```
 
-`game/runtime/` contém o lifecycle descrito em [docs/game-runtime.md](./docs/game-runtime.md); JavaScript Engine e Game SDK ainda não existem. O mesmo vale para `hal/audio/`.
+`game/runtime/` contém o lifecycle descrito em [docs/game-runtime.md](./docs/game-runtime.md); a JavaScript Engine está proposta (MQuickJS, ADR-0007, contrato em [docs/javascript-engine.md](./docs/javascript-engine.md)), mas `game/engine/` ainda não existe, e o Game SDK também não. O mesmo vale para `hal/audio/`.
 
 ### Includes
 
@@ -710,13 +714,13 @@ A coordenação do ciclo de vida de jogos **não** pertence ao `System`: ela é 
 
 `game/runtime/` controla a execução de **um jogo por vez**. O contrato está fechado em [docs/game-runtime.md](./docs/game-runtime.md) e a decisão de posse de recursos na [ADR-0006](./docs/adr/0006-game-runtime-session-and-resource-ownership.md); o lifecycle está implementado em `game_runtime.hpp/.cpp`.
 
-O Game Package apenas valida e fornece arquivos. Carregar ou executar o entrypoint pertence ao Runtime, que hoje está limitado ao lifecycle: nenhum JavaScript é interpretado.
+O Game Package apenas valida e fornece arquivos. Carregar ou executar o entrypoint pertence ao Runtime, que hoje está limitado ao lifecycle: nenhum JavaScript é interpretado. A engine (MQuickJS), a arena em PSRAM e o contrato de frame estão propostos em [docs/javascript-engine.md](./docs/javascript-engine.md) (ADR-0007, status Proposto); a integração depende do ESP32-S3 com PSRAM e é validada pelo spike #8.
 
 ```text
 GameLibrary → GameInfo → GameRuntime → GamePackage
                               │
                               ▼
-                     JavaScript Engine (futuro)
+                JavaScript Engine (MQuickJS proposto, não integrado)
 ```
 
 API fechada:
@@ -738,7 +742,7 @@ Regras que a implementação não pode reinventar:
 - O Runtime não lê `Input`, não desenha, não imprime e não inclui `Arduino.h`; devolve `Failure` e o `Console` loga.
 - Durante `Running`, o `Console` não atualiza telas: `Input` e `Display` ficam reservados à sessão do jogo, sem que o Runtime acesse esses HALs.
 - `B` para sair durante a execução é política **provisória** do `Console`, não do Runtime.
-- Não criar interface `GameEngine` até a engine ser escolhida.
+- A ADR-0007 (proposta) substitui a interface `GameEngine` adiada na ADR-0006 pela fachada `JsEngine` em `game/engine/` (ainda não criada); o contrato está em [docs/javascript-engine.md](./docs/javascript-engine.md). A engine aloca e libera a própria arena; o Runtime não aloca PSRAM. Na integração, `update()` passa a `update(dtMs)` e `Failure` ganha os erros da engine.
 
 A fronteira planejada de execução é:
 
@@ -1057,6 +1061,7 @@ Os itens abaixo descrevem o estado atual do projeto e não devem ser tratados au
 
 - `Boot` não possui `update()`; `Console::update()` chama `Input::update()`, o `GameRuntime` quando em execução, a tela visível e trata as transições entre telas diretamente.
 - Ainda não existe Audio. O `GameRuntime` implementa somente o lifecycle: não interpreta JavaScript e não executa gameplay; `update()` apenas incrementa `frameCount()`.
+- A JavaScript Engine (MQuickJS) está proposta (ADR-0007), mas não integrada: depende do ESP32-S3 com PSRAM, de um ambiente `esp32s3` e da validação do spike descrito em [docs/javascript-engine.md](./docs/javascript-engine.md).
 - A Game Library é populada no boot e a `GamesScreen` consome a lista; `A` abre o pacote do jogo, mas ainda não há execução.
 - A Game Library ordena os jogos na ordem do sistema de arquivos e não remove IDs duplicados.
 - O Game Package possui testes nativos para o formato, mas a integração de leitura deve ser validada com cartão microSD físico.
@@ -1123,7 +1128,7 @@ A evolução planejada do firmware é:
       ↓
 14. GameRuntime ✅ (lifecycle; engine pendente)
       ↓
-15. JavaScript Engine ⏳
+15. JavaScript Engine ⏳ (MQuickJS proposto; validação e integração no spike #8, pendente do S3 + PSRAM)
       ↓
 16. Game SDK ⏳
       ↓
