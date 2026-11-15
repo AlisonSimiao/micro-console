@@ -1,6 +1,6 @@
 # Micro Console
 
-Firmware para um console baseado em ESP32 DevKit (`esp32dev`), desenvolvido com PlatformIO e Arduino. O projeto está em desenvolvimento: atualmente inclui inicialização do console, configuração via LittleFS, HALs de input, display e Storage, leitor de pacotes de jogos, descoberta de jogos no cartão, menu principal, lista de jogos e consultas de plataforma pelo `System`. A execução de jogos tem contrato definido, mas ainda não está implementada.
+Firmware para um console baseado em ESP32 DevKit (`esp32dev`), desenvolvido com PlatformIO e Arduino. O projeto está em desenvolvimento: atualmente inclui inicialização do console, configuração via LittleFS, HALs de input, display e Storage, leitor de pacotes de jogos, descoberta de jogos no cartão, menu principal, lista de jogos, lifecycle de execução pelo `GameRuntime` e consultas de plataforma pelo `System`. Ainda não há JavaScript Engine nem Game SDK, portanto nenhum jogo é executado.
 
 ## Recursos atuais
 
@@ -44,13 +44,13 @@ flowchart TB
         Storage["Storage"]
     end
 
-    subgraph GAMES["Gerenciamento de jogos atual"]
+    subgraph GAMES["Jogos"]
         Library["GameLibrary<br/>Descoberta e metadados"]
         Package["GamePackage<br/>Leitura e validacao .ali"]
+        Runtime["GameRuntime<br/>Sessao unica"]
     end
 
     subgraph FUTURE["Execucao de jogos — planejada"]
-        Runtime["GameRuntime"]
         Engine["JavaScript Engine"]
         SDK["Game SDK"]
     end
@@ -78,14 +78,15 @@ flowchart TB
     Library --> Storage
     Package --> Storage
 
-    Console -.-> Runtime
-    Runtime -.-> System
-    Runtime -.-> Package
+    Console --> Runtime
+    Runtime --> Package
+    Runtime --> Storage
     Runtime -.-> Engine
     Engine -.-> SDK
+    SDK -.-> System
 ```
 
-As setas sólidas representam relações implementadas; as tracejadas indicam partes planejadas. A `GameLibrary` é preenchida no boot quando o cartão monta e a `GamesScreen` já exibe a lista; iniciar um jogo pela lista ainda não está implementado.
+As setas sólidas representam relações implementadas; as tracejadas indicam partes planejadas. A `GameLibrary` é preenchida no boot quando o cartão monta e a `GamesScreen` já exibe a lista; `A` abre o pacote do jogo selecionado no `GameRuntime`, mas ainda não há gameplay.
 
 ### Responsabilidades
 
@@ -266,7 +267,7 @@ if (console.storage().isMounted()) {
 }
 ```
 
-`StorageFile` fecha automaticamente ao sair de escopo e também pode ser fechado explicitamente; leituras em um arquivo fechado retornam zero. `StorageDirectory` faz o mesmo e ocupa um dos quatro slots de arquivo aberto; `next()` lista apenas filhos imediatos, sem recursão. `StorageFileInfo` contém apenas `isDirectory` e `size`. As consultas `wasPressed()` e `wasReleased()` representam bordas detectadas na atualização corrente; consulte-as após a atualização de input. O console inicia no menu principal: UP e DOWN alternam a opção selecionada de forma circular, e a opção Jogos abre a lista de jogos. Na lista, UP/DOWN navegam e `A` ou `B` fecham; iniciar um jogo ainda não está implementado.
+`StorageFile` fecha automaticamente ao sair de escopo e também pode ser fechado explicitamente; leituras em um arquivo fechado retornam zero. `StorageDirectory` faz o mesmo e ocupa um dos quatro slots de arquivo aberto; `next()` lista apenas filhos imediatos, sem recursão. `StorageFileInfo` contém apenas `isDirectory` e `size`. As consultas `wasPressed()` e `wasReleased()` representam bordas detectadas na atualização corrente; consulte-as após a atualização de input. O console inicia no menu principal: UP e DOWN alternam a opção selecionada de forma circular, e a opção Jogos abre a lista de jogos. Na lista, UP/DOWN navegam, `A` abre o jogo selecionado e `B` volta ao menu; ainda não há gameplay.
 
 Consultas de plataforma ficam disponíveis pelo `System`:
 
@@ -320,7 +321,7 @@ firmware/
 ├── game/
 │   ├── library/  # Descoberta e metadados dos jogos em /games
 │   ├── package/  # Container .ali, manifesto e arquivos internos
-│   └── runtime/  # Lifecycle de execução (planejado; contrato em docs/game-runtime.md)
+│   └── runtime/  # Lifecycle da sessão de jogo (docs/game-runtime.md)
 ├── console/    # Composição do console
 ├── system/     # Consultas de plataforma (uptime e heap livre)
 ├── ui/

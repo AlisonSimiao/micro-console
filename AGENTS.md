@@ -740,7 +740,7 @@ Regras que a implementação não pode reinventar:
 - `Failed` significa sempre nenhum recurso retido; o `Console` pode voltar à Home sem limpeza extra.
 - O Runtime possui seu próprio `GamePackage` (~9,3 KB adicionais); não compartilha o da `GameLibrary`.
 - O Runtime não lê `Input`, não desenha, não imprime e não inclui `Arduino.h`; devolve `Failure` e o `Console` loga.
-- Durante `Running`, o `Console` não atualiza telas: `Input` e `Display` pertencem ao jogo.
+- Durante `Running`, o `Console` não atualiza telas: `Input` e `Display` ficam reservados à sessão do jogo, sem que o Runtime acesse esses HALs.
 - `B` para sair durante a execução é política **provisória** do `Console`, não do Runtime.
 - Não criar interface `GameEngine` até a engine ser escolhida.
 

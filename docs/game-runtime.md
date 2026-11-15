@@ -67,9 +67,15 @@ um jogo       →  GameRuntime
 Não existem `GameRuntimeManager`, `GameSessionManager` ou `GameInstance`. O
 `Console` possui uma única instância, como membro de vida longa.
 
-Durante `Running`, o Runtime tem **posse exclusiva** do `Input` e do `Display`:
-o `Console` não atualiza nem desenha telas enquanto o jogo está em execução. Isso
-evita que navegação de menu consuma as bordas de botão destinadas ao jogo.
+Durante `Running`, a sessão tem **exclusividade sobre a atualização de telas e
+sobre o destino dos controles**: o `Console` não atualiza nem desenha telas
+enquanto o jogo está em execução. Isso evita que navegação de menu consuma as
+bordas de botão destinadas ao jogo.
+
+O Runtime **não** recebe `Input` nem `Display`: a exclusividade é uma política do
+`Console`, que continua chamando `Input::update()` para que as bordas do jogo
+existam e trata a saída provisória por `B`. Quando o Game SDK existir, os
+controles do jogo passarão a ser lidos pela sessão, não pelo Runtime diretamente.
 
 ## Lifecycle
 
@@ -250,8 +256,8 @@ flowchart LR
 
 - `GamesScreen` **não** inicia jogos. Ela expõe a seleção por
   `const GameInfo* selected() const` e deixa de tratar `A`/`B`; `update()` fica
-  somente com navegação e desenho. Essa mudança entra junto com a implementação
-  do Runtime: hoje `A` e `B` apenas fecham a lista.
+  somente com navegação e desenho. Isso faz parte da implementação do Runtime,
+  que mantém `A` e `B` no `Console`.
 - O `Console` decide iniciar, encerrar e para onde voltar. Assim a UI não
   depende do Runtime e o Runtime não depende da UI.
 - Modo exclusivo, ordem das decisões em `Console::update()`:
