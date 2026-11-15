@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build e testes nativos
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # O cache guarda plataformas e pacotes do PlatformIO; o toolchain do ESP32
+      # é o passo mais lento de um build do zero.
+      - name: Cache do PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.platformio
+          key: platformio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+          restore-keys: platformio-${{ runner.os }}-
+
+      - name: Instalar PlatformIO
+        run: pip install platformio==6.2.0
+
+      # Instala as dependências (ArduinoJson) usadas também pelos testes nativos
+      # e verifica se o firmware compila.
+      - name: Compilar firmware
+        run: pio run
+
+      - name: Testes do Game Package e da Game Library
+        run: bash test/run-game-package-tests.sh
+
+      - name: Testes do System
+        run: bash test/run-system-tests.sh
+
+      - name: Testes do Game Runtime
+        run: bash test/run-game-runtime-tests.sh

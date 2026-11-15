@@ -36,13 +36,9 @@ Limpar build:
 
 ### Verification
 
-Atualmente não existem:
+O GitHub Actions executa o build e os testes nativos a cada push na `main` e a cada pull request ([`.github/workflows/ci.yml`](./.github/workflows/ci.yml)). Não existe linter configurado.
 
-- testes automatizados;
-- linter;
-- CI.
-
-A principal verificação é:
+A principal verificação local é:
 
 ```bash
 ~/.platformio/penv/bin/pio run

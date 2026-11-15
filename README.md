@@ -1,5 +1,7 @@
 # Micro Console
 
+[![CI](https://github.com/AlisonSimiao/micro-console/actions/workflows/ci.yml/badge.svg)](https://github.com/AlisonSimiao/micro-console/actions/workflows/ci.yml)
+
 Firmware para um console baseado em ESP32 DevKit (`esp32dev`), desenvolvido com PlatformIO e Arduino. O projeto está em desenvolvimento: atualmente inclui inicialização do console, configuração via LittleFS, HALs de input, display e Storage, leitor de pacotes de jogos, descoberta de jogos no cartão, menu principal, lista de jogos, lifecycle de execução pelo `GameRuntime` e consultas de plataforma pelo `System`. Ainda não há JavaScript Engine nem Game SDK, portanto nenhum jogo é executado.
 
 ## Recursos atuais
@@ -338,13 +340,15 @@ docs/game-package-format.md
 docs/game-library.md
 docs/game-runtime.md
 docs/system.md
+test/           # Testes nativos, fakes de HAL e fixtures
+.github/workflows/ci.yml
 ```
 
 Os includes do firmware são relativos a `firmware/`, por exemplo `#include "hal/input/input.hpp"`.
 
 ## Verificação
 
-Não há CI configurada. O build do firmware e os testes nativos são:
+O GitHub Actions executa o build e os testes nativos a cada push na `main` e a cada pull request ([`.github/workflows/ci.yml`](./.github/workflows/ci.yml)). Localmente, os mesmos comandos são:
 
 ```bash
 ~/.platformio/penv/bin/pio run
